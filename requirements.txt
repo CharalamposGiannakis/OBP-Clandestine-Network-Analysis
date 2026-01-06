@@ -9,7 +9,7 @@ scipy
 numpy
 pandas
 
-# Visualization (Add streamlit-agraph here)
+# Visualization 
 streamlit-agraph
 pyvis
 matplotlib
