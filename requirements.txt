@@ -13,3 +13,5 @@ pandas
 pyvis
 matplotlib
 streamlit-option-menu
+plotly.express
+
