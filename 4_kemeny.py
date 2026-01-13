@@ -82,7 +82,7 @@ def kemeny_constant(P: sp.csr_matrix, pi: np.ndarray) -> float:
 
 def compute_kemeny(A: sp.csr_matrix) -> float:
     P = random_walk_transition(A)
-    pi = stationary_distribution(A)
+    pi = stationary_distribution(P)
     return kemeny_constant(P, pi)
 
 
@@ -204,4 +204,5 @@ st.write(
 )
 if st.button("Reset (original network)"):
     st.experimental_rerun()
+
 
