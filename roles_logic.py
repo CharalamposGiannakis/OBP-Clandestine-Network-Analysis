@@ -154,13 +154,43 @@ def flow_based_role_similarity(A_input: sp.spmatrix, alpha: float, kmax: int, n_
         "role_labels": labels,
         }
     
+
+A = scipy.io.mmread("clandestine_network_example.mtx")
+A = A.tocsr()
+
+
+### multi-scale exploration 
+alphas = np.linspace(0.10,0.99,10)
+
+labels_by_alpha = {}
+
+for a in alphas:
+    res = flow_based_role_similarity(A_input=A, alpha=float(a), kmax=10, n_roles=4)
+    labels_by_alpha[float(a)] = res["role_labels"]
     
     
 ### measure stability between consecutive a values
 
+stability = []
+alphas_sorted = sorted(labels_by_alpha.keys())
 
+for i in range(1, len(alphas_sorted)):
+    a0, a1 = alphas_sorted[i-1], alphas_sorted[i]
+    ari = adjusted_rand_score(labels_by_alpha[a0], labels_by_alpha[a1])
+    stability.append((a0,a1,ari))
     
+#print("Alpha stability (ARI between consecutive alphas):")
+#for a0,a1,ari in stability:
+#    print(f"{a0:.2f} -> {a1:.2f}: ARI = {ari:.3f}")
     
+alpha_star = 0.75
+kmax = 10
+
+
+res_star = flow_based_role_similarity(A_input=A, alpha=alpha_star, kmax=10, n_roles=4)
+
+role_labels_star = res_star["role_labels"]
+X_star = res_star["X_flow_profiles"]
 
 def summarize_flow_roles(X,labels,kmax):
     df = pd.DataFrame({"node": np.arange(X.shape[0]), "role": labels})
@@ -180,6 +210,9 @@ def summarize_flow_roles(X,labels,kmax):
     
     return df,summary
     
+
+df_nodes, df_roles_summary = summarize_flow_roles(X_star, role_labels_star, kmax)
+#print(df_roles_summary)
 
 ### map cluster id to interpretable names
 
@@ -201,6 +234,19 @@ def assign_role_names_by_embeddedness(df_nodes):
     return {r: role_names[i] for i,r in enumerate(role_order)}
 
 
+df_nodes["embeddedness_score"] = df_nodes["in_total"] + df_nodes["out_total"]
+role_name_map = assign_role_names_by_embeddedness(df_nodes)
+df_nodes["role_name"] = df_nodes["role"].map(role_name_map)
+
+
+### robustness check for alpha =0.3
+
+res_local = flow_based_role_similarity(A_input=A , alpha=0.3, kmax=10, n_roles=4)
+labels_local = res_local["role_labels"]
+X_local = res_local["X_flow_profiles"]
+
+df_nodes_local, summary_local = summarize_flow_roles(X_local, labels_local , kmax)
+#print(summary_local)
 
 
 ### Distance-Based Method 
@@ -274,7 +320,7 @@ def distance_based_roles(
         for c in core_nodes:
             G_temp2.add_edge(super_source2, c)
         
-        dist_raw2 = nx.single_source_shortest_path_length(G_temp2,super_source2)
+        dist_raw2 = nx.single_source_shortest_path_lenght(G_temp2,super_source2)
         
         dist_to_core2 = np.full(n,np.inf)
         for node, d in dist_raw2.items():
@@ -315,6 +361,11 @@ def distance_based_roles(
     
     return df, meta
 
+df_dist, meta_dist = distance_based_roles(A, core_quantile=0.90, directed="auto")
+
+#print(df_dist["distance_role"].value_counts())
+#print("\n")
+#print(meta_dist["n_core"], meta_dist["core_nodes"][:10])
 
 
 ### cetrality profile roles clustering
@@ -447,6 +498,12 @@ def centrality_profile_roles(
     return df, meta
 
 
+df_cent, meta_cent = centrality_profile_roles(A, n_roles=4, directed="auto", use_weights=False,seed=0)
+#print(df_cent["centrality_role"].value_counts())
+
+cent_summary = df_cent.groupby("centrality_role")[["degree","betweenness","eigenvector","katz"]].mean()
+#print(cent_summary)
+
 
 ### neighborhood overlap
 
@@ -548,44 +605,9 @@ def structual_equivalence_roles(
     return df, meta
 
 
-def run_all_role_methods(A_input, alpha_star=0.75, kmax=10,n_roles=4,seed=0):
-    # flow-based roles
-    res = flow_based_role_similarity(A_input,alpha=alpha_star,kmax=kmax,n_roles=n_roles)
-    X = res["X_flow_profiles"]
-    labels = res["role_labels"]
-
-    df_flow, df_flow_summary = summarize_flow_roles(X,labels,kmax)
-    df_flow["embeddedness_score"] = df_flow["in_total"] + df_flow["out_total"]
-    role_name_map = assign_role_names_by_embeddedness(df_flow)
-    df_flow["role_name"] = df_flow["role"].map(role_name_map)
-
-    # distance-based roles
-    df_dist, meta_dist = distance_based_roles(A_input, core_quantile=0.90, directed="auto")
-
-    # centrality roles
-    df_cent, meta_cent = centrality_profile_roles(
-        A_input, n_roles=n_roles, directed="auto", use_weights=False, seed=seed
+df_overlap, meta_overlap = structual_equivalence_roles(
+    A, n_roles=4, directed="auto",directed_mode="auto",similarity="jaccard",seed=0
     )
-
-    #structual overlap
-    df_overlap, meta_overlap = structual_equivalence_roles(
-        A_input, n_roles=n_roles, directed="auto", directed_mode="auto", similarity="jaccard", seed=seed
-    )
-
-    return {
-        "df_flow": df_flow,
-        "df_flow_summary": df_flow_summary,
-        "df_dist": df_dist,
-        "df_cent": df_cent,
-        "df_overlap": df_overlap,
-        "meta": {
-            "flow": res["meta"],
-            "distance": meta_dist,
-            "centrality": meta_cent,
-            "overlap": meta_overlap
-        }
-    }
-
+#print(df_overlap["overlap_role"].value_counts())
         
-
         
