@@ -38,6 +38,11 @@ df_dist = results["df_dist"]
 df_cent = results["df_cent"]
 df_overlap = results["df_overlap"]
 
+df_flow = df_flow.set_index("node", drop=False)
+df_dist = df_dist.set_index("node", drop=False)
+df_cent = df_cent.set_index("node", drop=False)
+df_overlap = df_overlap.set_index("node", drop=False)
+
 # flow based method for display; other methods are confidence indicators
 def method_vote_for_node(i: int) -> dict:
   votes = {}
@@ -79,7 +84,9 @@ def confidence_for_node(i: int) -> float:
   return agree / len(votes)
 
 df_display = df_flow[["node","role_name","embeddedness_score","in_total","out_total","net_flow"]].copy()
+df_display = df_display.set_index("node", drop=False)
 df_display["confidence"] = [confidence_for_node(i) for i in df_display["node"]]
+
 
 c1, c2, c3 = st.columns(3)
 c1.metric(
