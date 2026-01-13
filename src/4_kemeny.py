@@ -81,7 +81,7 @@ def kemeny_constant(P: sp.csr_matrix, pi: np.ndarray) -> float:
 
 def compute_kemeny(A: sp.csr_matrix) -> float:
     P = random_walk_transition(A)
-    pi = stationary_distribution(A)
+    pi = stationary_distribution(P)
     return kemeny_constant(P, pi)
 
 
@@ -179,5 +179,6 @@ st.write(
     "- **Negative ΔK** → faster information flow (connectivity better)\n"
     "- **Disconnect** → operationally critical link (isolates actors)"
 )
+
 
 
