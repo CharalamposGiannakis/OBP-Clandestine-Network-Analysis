@@ -192,7 +192,7 @@ def assign_role_names_by_embeddedness(df_nodes):
         "Core-like (high embeddedness)",
         "Intermediate (moderate embeddedness)",
         "Peripheral (low embeddedness)",
-        "Extreme peripheral / near-isolated"
+        "Extreme peripheral / near isolated"
         ]
     
     return {r: role_names[i] for i,r in enumerate(role_order)}
@@ -586,4 +586,5 @@ def run_all_role_methods(A_input,alpha_star=0.75,kmax=10,n_roles=4,seed=0):
         
 
         
+
 
