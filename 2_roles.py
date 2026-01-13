@@ -6,7 +6,7 @@ import networkx as nx
 import plotly.graph_objects as go
 
 from ui_components import apply_tactical_theme, COLOR_VOID, COLOR_WIRE, COLOR_STEEL, COLOR_ALERT
-from src.roles_logic import run_all_role_methods
+from roles_logic import run_all_role_methods
 
 st.set_page_config(layout="wide")
 apply_tactical_theme()
