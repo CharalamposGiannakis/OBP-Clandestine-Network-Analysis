@@ -13,6 +13,11 @@ apply_tactical_theme()
 
 st.title("ROLES // CLASSIFICATION")
 st.caption("SOCIAL ROLE ANALYSIS ENGINE")
+st.info(
+  "How to read: Colors = role type. Bigger nodes = more embedded in the network. "
+  "Confidence = how much the different methods agree."
+)
+
 
 @st.cache_data
 def load_adjacency():
@@ -76,12 +81,29 @@ def confidence_for_node(i: int) -> float:
 df_display = df_flow[["node","role_name","embeddedness_score","in_total","out_total","net_flow"]].copy()
 df_display["confidence"] = [confidence_for_node(i) for i in df_display["node"]]
 
+c1, c2, c3 = st.columns(3)
+c1.metric(
+  "Core-like members", int((df_display["role_name"] == "Core-like (high embeddedness)").sum()))
+c2.metric("Peripheral members",
+          int((df_display["role_name"]=="Peripheral (low embeddedness)").sum()))
+c3.metric("Avg. confidence",
+          f"{df_display['confidence'].mean():.0%}")
+
 ROLE_COLORS = {
   "Core-like (high embeddedness)": "#e74c3c",
   "Intermediate (moderate embeddedness)": "#f39c12",
   "Peripheral (low embeddedness)": "#3498db",
   "Extreme peripheral / near isolated": "#7f8c8d"
 }
+
+def role_explanation(role):
+  if "Core-like" in role:
+    return "Highly connected and influential across multiple parts of the network."
+  if "Intermediate" in role:
+    return "Moderately connected; often acts as a link between core and peripheral members."
+  if "Peripheral" in role:
+    return "Limited interactions; participates in few network pathways."
+  return "Very few connections; likely isolated or inactive."
 
 def plot_network(G, df_display):
   pos = nx.spring_layout(G, seed=42)
@@ -152,6 +174,10 @@ with col2:
   st.markdown(f"**Assigned role:** {row['role_name']}")
   st.progress(float(row["confidence"]))
   st.caption(f"Confidence: {row['confidence']:.0%} (agreement acroos methods)")
+  if row["confidence"] < 0.5:
+    st.warning("Low agreement across methods. Treat this role as uncertain.")
+  
+  st.caption(role_explanation(row["role_name"])) 
 
   st.markdown("---")
   st.markdown("**Role signals (simple explanation):**")
@@ -164,7 +190,12 @@ with col2:
   votes = method_vote_for_node(node_id)
   st.markdown("**Method agreement:**")
   st.dataframe(pd.DataFrame({"Method": list(votes.keys()), "Role label": list(votes.values())}), use_container_width=True, hide_index=True)
-  
+
+st.subheader("All members (search & sort)")
+st.dataframe(
+  df_display.sort_values(["confidence","embeddedness_score"], ascending=[True, False]),
+    use_container_width=True
+)
                                     
                
               
