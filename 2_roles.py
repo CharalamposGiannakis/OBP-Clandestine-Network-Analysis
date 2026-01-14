@@ -305,7 +305,6 @@ with col2:
       def level(x, q50, q75):
           return "High" if x >= q75 else "Medium" if x >= q50 else "Low"
 
-      st.write("Flow view: combines direct + indirect connections.")
       st.write(f"Overall involvement (relative): **{level(emb, emb_q50, emb_q75)}**")
       st.write(f"Reaches others (relative): **{level(outv, out_q50, out_q75)}**")
       st.write(f"Is reached by others (relative): **{level(inv, in_q50, in_q75)}**")
