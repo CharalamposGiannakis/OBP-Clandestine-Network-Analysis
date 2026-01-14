@@ -192,7 +192,7 @@ def assign_role_names_by_embeddedness(df_nodes):
         "Core-like (high embeddedness)",
         "Intermediate (moderate embeddedness)",
         "Peripheral (low embeddedness)",
-        "Extreme peripheral / near-isolated"
+        "Extreme peripheral / near isolated"
         ]
     
     return {r: role_names[i] for i,r in enumerate(role_order)}
@@ -555,7 +555,7 @@ def run_all_role_methods(A_input,alpha_star=0.75,kmax=10,n_roles=4,seed=0):
     df_flow, df_flow_summary = summarize_flow_roles(X,labels,kmax)
     df_flow["embeddedness_score"] = df_flow["in_total"] + df_flow["out_total"]
     role_name_map = assign_role_names_by_embeddedness(df_flow)
-    df_flow["role_name"] = df["role"].map(role_name_map)
+    df_flow["role_name"] = df_flow["role"].map(role_name_map)
 
     #distance based roles
     df_dist, meta_dist = distance_based_roles(A_input, core_quantile=0.90, directed="auto")
@@ -586,3 +586,5 @@ def run_all_role_methods(A_input,alpha_star=0.75,kmax=10,n_roles=4,seed=0):
         
 
         
+
+
