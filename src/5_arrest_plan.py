@@ -1,11 +1,8 @@
 import os
-from collections import defaultdict
-
 import networkx as nx
 import pandas as pd
 import streamlit as st
-from pyvis.network import Network
-from scipy.io import mmread
+from streamlit_agraph import agraph, Node, Edge, Config
 
 from src.arrest_algorithms import (
     load_graph,
@@ -17,6 +14,7 @@ from src.arrest_algorithms import (
 
 FILE_PATH = "data/clandestine_network_example.mtx"
 
+GRAPH_HEIGHT_PX = 850
 
 
 # helpers for dashboard
@@ -27,6 +25,12 @@ def load_graph_cached(file_path: str) -> nx.Graph:
     G = load_graph(file_path)
     G.remove_edges_from(nx.selfloop_edges(G))
     return G
+
+@st.cache_data
+def compute_fixed_layout(_graph: nx.Graph):
+    pos = nx.spring_layout(_graph, seed=42, k=1.2)
+    return {u: (pos[u][0] * 1000, pos[u][1] * 1000) for u in _graph.nodes()}
+
 
 
 def assignment_to_df(assignment: dict[int, int]) -> pd.DataFrame:
@@ -42,46 +46,59 @@ def colour_palette():
     ]
 
 
-def build_pyvis_html_by_dept(
+def build_agraph_by_dept(
     G: nx.Graph,
-    assignment: dict[int, int] | None,
-    height_px: int = 650
+    assignment: dict[int, int],
+    layout_map: dict[int, tuple[float, float]],
 ):
-    net = Network(
-        height=f"{height_px}px",
+    nodes = []
+    edges = []
+
+    COLOR_A = "#4E79A7"   # blue
+    COLOR_B = "#E15759"   # red
+    COLOR_EDGE = "#444444"
+    COLOR_CROSS = "#FF4444"
+
+    for u in G.nodes():
+        x, y = layout_map[u]
+        dept = assignment.get(u, None)
+
+        nodes.append(
+            Node(
+                id=str(u),
+                label=str(u),
+                x=x,
+                y=y,
+                size=20,
+                color=COLOR_A if dept == 0 else COLOR_B,
+                font={"color": "white", "size": 16},
+            )
+        )
+
+    for u, v in G.edges():
+        cross = assignment[u] != assignment[v]
+        edges.append(
+            Edge(
+                source=str(u),
+                target=str(v),
+                color=COLOR_CROSS if cross else COLOR_EDGE,
+                width=3 if cross else 1,
+                opacity=1.0 if cross else 0.25,
+                type="CURVED_CW" if cross else "STRAIGHT",
+            )
+        )
+
+    config = Config(
         width="100%",
-        bgcolor="#000000",
-        font_color="#ffffff",
+        height=GRAPH_HEIGHT_PX,
         directed=False,
+        physics=True,
+        staticGraph=False,
+        nodeHighlightBehavior=True,
     )
-    net.barnes_hut()
-    net.from_nx(G)
 
-    colours = {0: "#4E79A7", 1: "#E15759"}  # A blue, B red-ish
+    return agraph(nodes=nodes, edges=edges, config=config)
 
-    for node in net.nodes:
-        nid = int(node["id"])
-        node["label"] = str(nid)
-        node["font"] = {"color": "#ffffff", "size": 18}
-        node["size"] = 40
-        node["borderWidth"] = 0
-        node["shadow"] = False
-
-        if assignment is None:
-            node["color"] = "#DDDDDD"
-            node["title"] = f"Node {nid}"
-        else:
-            d = int(assignment[nid])
-            node["color"] = colours[d]
-            node["title"] = f"Node {nid}<br>Dept {'A' if d==0 else 'B'}"
-
-    for e in net.edges:
-        e["color"] = "#AAAAAA"
-        e["width"] = 1.5
-
-    html = net.generate_html()
-    html = html.replace("<body>", "<body style='margin:0; padding:0; background:#000;'>")
-    return html
 
 
 
@@ -133,7 +150,7 @@ graph = load_graph_cached(FILE_PATH)
 N = graph.number_of_nodes()
 
 st.sidebar.header("Controls")
-height_px = st.sidebar.slider("Graph height", 400, 1000, 650, 50)
+# height_px = st.sidebar.slider("Graph height", 400, 1000, 650, 50)
 same_comm_multiplier = st.sidebar.slider("Same-community penalty", 1.0, 5.0, 2.0, 0.5)
 max_iters = st.sidebar.slider("Max iterations (moves/swaps)", 10, 500, 100, 10)
 candidate_k = st.sidebar.slider("Swap candidate_k", 4, 31, 12, 1)
@@ -151,11 +168,16 @@ if run_clicked:
 res = st.session_state.result
 
 st.write(f"Nodes: **{N}**  |  Edges: **{graph.number_of_edges()}**")
+layout_map = compute_fixed_layout(graph)
 
 if res is None:
     st.info("Click **Run pipeline** to compute an assignment.")
-    html = build_pyvis_html_by_dept(graph, assignment=None, height_px=height_px)
-    st.components.v1.html(html, height=height_px, scrolling=False)
+    dummy_assignment = {int(u): 0 for u in graph.nodes()}  # all A just to render
+    build_agraph_by_dept(
+        graph,
+        assignment=dummy_assignment,
+        layout_map=layout_map,
+    )
 else:
     st.subheader("Regret summary")
     col1, col2, col3 = st.columns(3)
@@ -164,8 +186,14 @@ else:
     col3.metric("After swaps (R2)", f"{res['R2']:.2f}")
 
     st.subheader("Graph (colored by Dept)")
-    html = build_pyvis_html_by_dept(graph, assignment=res["assignment2"], height_px=height_px)
-    st.components.v1.html(html, height=height_px, scrolling=False)
+    # html = build_pyvis_html_by_dept(graph, assignment=res["assignment2"], height_px=GRAPH_HEIGHT_PX )
+    # st.components.v1.html(html, height=GRAPH_HEIGHT_PX , scrolling=False)
+
+    build_agraph_by_dept(
+        graph,
+        assignment=res["assignment2"],
+        layout_map=layout_map,
+    )
 
     st.subheader("Assignment table")
     df = assignment_to_df(res["assignment2"])
@@ -176,7 +204,7 @@ else:
     sizeB = (df["dept"] == "B").sum()
     st.write(f"Dept A: **{sizeA}**  |  Dept B: **{sizeB}**  |  Capacity target: **{res['cap']}**")
 
-    st.subheader("Communities (Louvain) summary")
+    st.subheader("Communities (For now Louvain) summary")
     sizes = sorted([len(c) for c in res["communities"]], reverse=True)
     st.write(f"Number of communities: **{len(res['communities'])}**")
     st.write("Sizes:", sizes)
