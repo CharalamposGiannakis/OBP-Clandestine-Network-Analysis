@@ -114,6 +114,8 @@ def build_agraph_by_dept(
 
 # APP
 st.title("Part 5 — Department assignment dashboard")
+import inspect
+st.write("Pipeline signature:", inspect.signature(run_part5_pipeline))
 
 with st.expander("How to use this page", expanded=True):
     st.markdown(
