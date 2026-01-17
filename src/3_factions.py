@@ -1,4 +1,5 @@
 import os
+import random
 from collections import defaultdict
 
 import igraph as ig
@@ -6,10 +7,11 @@ import leidenalg as la
 import networkx as nx
 import streamlit as st
 from infomap import Infomap
-from networkx.algorithms.community import girvan_newman
+from networkx.algorithms.community import girvan_newman, modularity
 from pyvis.network import Network
 from scipy.io import mmread
 from sklearn.cluster import SpectralClustering
+from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 
 FILE_PATH = "data/clandestine_network_example.mtx"
 HEIGH_PX = 650
@@ -111,6 +113,84 @@ def communities_to_membership(communities):
     return membership
 
 
+def perturb_graph(G: nx.Graph, frac: float = 0.05, seed=42):
+    random.seed(seed)
+    Gp = G.copy()
+    edges = list(Gp.edges())
+    k = int(len(edges) * frac)
+    remove = random.sample(edges, k)
+    Gp.remove_edges_from(remove)
+    return Gp
+
+
+def compute_modularity(G, communities):
+    return modularity(G, communities)
+
+
+def communities_to_labels(communities, nodes):
+    label_map = {}
+    for cid, comm in enumerate(communities):
+        for n in comm:
+            label_map[n] = cid
+    return [label_map[n] for n in nodes]
+
+
+def compute_nmi_ari(communities1, communities2, nodes):
+    labels1 = communities_to_labels(communities1, nodes)
+    labels2 = communities_to_labels(communities2, nodes)
+
+    nmi = normalized_mutual_info_score(labels1, labels2)
+    ari = adjusted_rand_score(labels1, labels2)
+    return nmi, ari
+
+
+def validate_partition_robustness(
+    G: nx.Graph,
+    algo_name: str,
+    communities,
+    frac: float = 0.05,
+    seed: int = 42,
+    resolution: float | None = None,
+    k: int | None = None,
+):
+    nodes = list(G.nodes())
+
+    initial_Q = compute_modularity(G, communities)
+
+    Gp = perturb_graph(G, frac=frac, seed=seed)
+
+    if algo_name == "Louvain":
+        communities_p = run_louvain(
+            Gp, resolution=resolution if resolution is not None else 0.4
+        )
+    elif algo_name == "Leiden":
+        communities_p = run_leiden(
+            Gp, resolution=resolution if resolution is not None else 0.4
+        )
+    elif algo_name == "Infomap":
+        communities_p = run_infomap(Gp)
+    elif algo_name == "Spectral":
+        communities_p = run_spectral(
+            Gp, k=k if k is not None else 2, assign_labels="kmeans"
+        )
+    elif algo_name == "Girvan-Newman":
+        communities_p = run_girvan_newman(Gp, k=k if k is not None else 2)
+
+    perturbation_Q = compute_modularity(Gp, communities_p)
+    nmi, ari = compute_nmi_ari(communities, communities_p, nodes)
+
+    return {
+        "edges_removed": int(len(G.edges()) * frac),
+        "Q_before": initial_Q,
+        "Q_after": perturbation_Q,
+        "delta_Q": initial_Q - perturbation_Q,
+        "NMI": nmi,
+        "ARI": ari,
+        "communities_perturbed": communities_p,
+        "G_perturbed": Gp,
+    }
+
+
 # APP
 
 
@@ -180,7 +260,7 @@ def build_pyvis_html(
             node["title"] = f"Node {nid}"
             node["opacity"] = 1
         else:
-            cid = membership[nid]
+            cid = membership.get(nid, 0)
             node["color"] = colours[cid % len(colours)]
             node["title"] = f"Node {nid}<br>Community {cid}"
 
@@ -255,6 +335,13 @@ if st.session_state.show_tutorial:
 
 G = load_graph(FILE_PATH)
 
+if "communities" not in st.session_state:
+    st.session_state.communities = None
+    st.session_state.membership = None
+    st.session_state.algo_used = None
+if "disturbance_results" not in st.session_state:
+    st.session_state.disturbance_results = None
+
 st.sidebar.header("Controls")
 algo = st.sidebar.selectbox(
     "Algorithm",
@@ -287,11 +374,22 @@ elif algo == "Spectral":
 elif algo == "Girvan-Newman":
     k = st.sidebar.slider("k", 2, 10, 2, 1, help="Number of Communities")
 run_clicked = st.sidebar.button("Run", type="primary")
+run_disturbance = False
+show_perturbed_graph = False
+if st.session_state.get("communities") is not None:
+    st.sidebar.divider()
 
-if "communities" not in st.session_state:
-    st.session_state.communities = None
-    st.session_state.membership = None
-    st.session_state.algo_used = None
+    run_disturbance = st.sidebar.button(
+        "Run disturbance test (remove 5%)",
+        help="Removes 5% of links and re-evaluates faction stability.",
+    )
+
+    show_perturbed_graph = st.sidebar.checkbox(
+        "Show perturbed graph",
+        value=False,
+        help="Display the network after 5% of links are removed.",
+    )
+
 
 if run_clicked:
     if algo == "Louvain":
@@ -307,7 +405,8 @@ if run_clicked:
     st.session_state.communities = communities
     st.session_state.membership = communities_to_membership(communities)
     st.session_state.algo_used = algo
-
+    st.session_state.disturbance_results = None
+    st.rerun()
 
 if st.session_state.communities is None:
     st.info("Pick an algorithm and click **Run**.")
@@ -320,10 +419,15 @@ if st.session_state.communities is None:
 else:
     communities = st.session_state.communities
     membership = st.session_state.membership
-
+    Q_before = float(modularity(G, communities))
     st.success(
         "Factions detected. Open **Community details** below to inspect members."
     )
+    st.subheader("Results")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Modularity (Q)", f"{Q_before:.3f}")
+    c2.metric("Detected factions", f"{len(communities)}")
+    c3.metric("Largest faction", f"{max(len(c) for c in communities)}")
 
     st.subheader(f"{st.session_state.algo_used}")
     html = build_pyvis_html(
@@ -332,6 +436,68 @@ else:
         height_px=HEIGH_PX,
     )
     st.components.v1.html(html, height=HEIGH_PX, scrolling=False)
+    st.subheader("Robustness check (optional)")
+
+    st.caption(
+        "This test removes 5% of links to simulate missing information and checks whether the detected factions remain stable."
+    )
+
+    if run_disturbance:
+        st.session_state.disturbance_results = validate_partition_robustness(
+            G,
+            algo_name=st.session_state.algo_used,
+            communities=communities,
+            frac=0.05,
+            seed=42,
+            resolution=resolution
+            if (st.session_state.algo_used in ("Louvain", "Leiden"))
+            else None,
+            k=k
+            if (st.session_state.algo_used in ("Spectral", "Girvan-Newman"))
+            else None,
+        )
+
+    if st.session_state.disturbance_results is None:
+        st.info(
+            "Click **Run disturbance test (remove 5%)** in the sidebar to evaluate stability."
+        )
+    else:
+        results = st.session_state.disturbance_results
+        st.subheader("Stability summary")
+
+        if results["NMI"] >= 0.8 and results["ARI"] >= 0.8:
+            st.success(
+                "Very stable: factions barely change after removing 5% of links."
+            )
+        elif results["NMI"] >= 0.6 and results["ARI"] >= 0.6:
+            st.warning(
+                "Moderately stable: some reshuffling after removing 5% of links."
+            )
+        else:
+            st.error("Unstable: factions change a lot under missing links.")
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Modularity Q (before)", f"{results['Q_before']:.3f}")
+        col2.metric("Modularity Q (after)", f"{results['Q_after']:.3f}")
+        col3.metric("ΔQ", f"{results['delta_Q']:.3f}")
+
+        col4, col5, col6 = st.columns(3)
+        col4.metric("NMI", f"{results['NMI']:.3f}")
+        col5.metric("ARI", f"{results['ARI']:.3f}")
+        col6.metric("Edges removed", f"{results['edges_removed']}")
+
+        st.caption(
+            "Higher NMI/ARI means factions stay similar after disturbance. "
+            "A smaller ΔQ means the overall structure is stable under missing links."
+        )
+
+        if show_perturbed_graph:
+            st.subheader("Perturbed network")
+            membership_p = communities_to_membership(results["communities_perturbed"])
+            html_p = build_pyvis_html(
+                results["G_perturbed"], membership_p, height_px=HEIGH_PX
+            )
+            st.components.v1.html(html_p, height=HEIGH_PX, scrolling=False)
 
     with st.expander("↓ Community details", expanded=False):
         st.write(f"Number of communities: **{len(communities)}**")
@@ -347,3 +513,4 @@ else:
             st.write(f"Node {nid} is in community **{membership.get(nid, 'N/A')}**")
 
         st.dataframe({"node_id": nodes})
+##### VALIDATION #####
