@@ -34,16 +34,6 @@ with st.container():
 
 
 
-st.markdown(
-    "<span style='color:#8b949e; font-size:0.85em;'>"
-    "Scope: static snapshot of observed communications (62 members). "
-    "Results reflect structural patterns rather than intent or hierarchy."
-    "</span>",
-    unsafe_allow_html=True,
-)
-
-
-
 st.markdown("### What this system does")
 
 st.markdown(
