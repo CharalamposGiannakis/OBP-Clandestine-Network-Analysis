@@ -23,12 +23,15 @@ st.divider()
 with st.container():
     st.markdown("### Welcome, Analyst")
     st.markdown(
-        "<div style='margin-left: 6px;'>"
-        "You are working with a decision support system for analyzing clandestine communication networks "
-        "using network science and mathematical optimization."
-        "</div>",
-        unsafe_allow_html=True,
+    "You are working with a decision support system for analyzing clandestine communication networks "
+    "using network science and mathematical optimization.\n\n"
+    "<span style='color:#8b949e; font-size:0.85em;'>"
+    "Scope: static snapshot of observed communications (62 members). "
+    "Results reflect structural patterns rather than intent or hierarchy."
+    "</span>",
+    unsafe_allow_html=True,
     )
+
 
 
 st.markdown(
