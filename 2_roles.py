@@ -19,10 +19,7 @@ st.markdown(
     "**Start:** pick a role method → inspect the colored network map → click a member on the right to see rationale and evidence."
 )
 
-st.info(
-  "How to read: Colors = role type. Bigger nodes = more embedded in the network. "
-  "Confidence = how much the different methods agree."
-)
+
 
 
 @st.cache_data
@@ -58,13 +55,17 @@ df_overlap = df_overlap.set_index("node", drop=False)
 method_ui = st.selectbox(
     "Role method (choose perspective)",
     ["Influence (flow)", "Core distance", "Importance type", "Similar contacts"],
-    index=0,
+    index=None,
+    placeholder="Select a method...",
     help=(
         "Each method assigns roles using a different network signal. "
         "Use Confidence to see how much the other methods agree with your choice."
     )
 )
 
+if method_ui is None:
+    st.warning("Select a role method to generate the role map and member inspection.")
+    st.stop()
 
 METHOD_KEY = {
     "Influence (flow)": "Flow",
@@ -73,16 +74,14 @@ METHOD_KEY = {
     "Similar contacts": "Overlap"
 }[method_ui]
 
-with st.expander("What does this method measure?"):
-    if METHOD_KEY == "Flow":
-        st.write("**Influence (flow):** roles are based on how information can travel through multi-step routes to and from this member.")
-    elif METHOD_KEY == "Distance":
-        st.write("**Core distance:** roles depend on how many steps away a member is from the high-degree core.")
-    elif METHOD_KEY == "Centrality":
-        st.write("**Importance type:** roles reflect whether a member acts as a hub, bridge, or peripheral based on centrality signals.")
-    else:
-        st.write("**Similar contacts:** roles are assigned based on similarity in contact patterns (structural equivalence).")
-
+if METHOD_KEY == "Flow":
+    st.markdown("**What this method measures:** Influence via multi-step information flow through the network.")
+elif METHOD_KEY == "Distance":
+    st.markdown("**What this method measures:** How many steps away a member is from the high-degree core.")
+elif METHOD_KEY == "Centrality":
+    st.markdown("**What this method measures:** Whether a member behaves like a hub, bridge, or peripheral based on centrality signals.")
+else:
+    st.markdown("**What this method measures:** Similarity of contact patterns (structural equivalence / overlap).")
 
 
 
@@ -174,18 +173,6 @@ df_display["role_label"] = [normalize_role_label(METHOD_KEY, i) for i in df_disp
 df_display["confidence"] = [confidence_for_node(i) for i in df_display["node"]]
 
 
-
-c1, c2, c3 = st.columns(3)
-c1.metric(
-  "Core-like members", int((df_display["role_label"] == "Core-like (high embeddedness)").sum())
-)
-c2.metric(
-  "Peripheral members",
-  int((df_display["role_label"] == "Peripheral (low embeddedness)").sum())
-)
-
-c3.metric("Avg. confidence",
-          f"{df_display['confidence'].mean():.0%}")
 
 ROLE_COLORS = {
   "Core-like (high embeddedness)": "#e74c3c",
@@ -287,9 +274,27 @@ def plot_network(G, df_display):
   )
   return fig
 
-col1, col2 = st.columns([2.2, 1])
+
+st.caption(
+    "Summary for the selected method: counts show how many members fall in each role; "
+    "Avg. confidence = average % of methods that assign the same role as the selected method."
+)
+
+m1, m2, m3, m4, m5 = st.columns(5)
+m1.metric("Core-like", int((df_display["role_label"] == "Core-like (high embeddedness)").sum()))
+m2.metric("Intermediate", int((df_display["role_label"] == "Intermediate (moderate embeddedness)").sum()))
+m3.metric("Peripheral", int((df_display["role_label"] == "Peripheral (low embeddedness)").sum()))
+m4.metric("Extreme peripheral", int((df_display["role_label"] == "Extreme peripheral / near isolated").sum()))
+m5.metric("Avg. confidence", f"{df_display['confidence'].mean():.0%}")
+
+
+col1, col2 = st.columns([3, 2])
 with col1:
   st.subheader("Role Map")
+  st.info(
+  "How to read: Colors = role type. Bigger nodes = more embedded in the network. "
+  "Confidence = how much the different methods agree."
+  )  
   st.caption(
     "Legend: Core-like = red, Intermediate = orange, Peripheral = blue, Extreme peripheral = gray."
   )
