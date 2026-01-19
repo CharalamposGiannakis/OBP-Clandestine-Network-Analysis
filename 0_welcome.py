@@ -19,23 +19,42 @@ with col_status:
     """, unsafe_allow_html=True)
 
 st.divider()
-st.markdown("""### WELCOME, ANALYST
-You are working with a decision support system for analyzing clandestine communication networks "
-"using network science and optimization-based methods."
-""")
-st.caption(
-    "Scope: static snapshot of observed communications (N=62). "
-    "Results reflect structural patterns, not intent or hierarchy."
+st.markdown("### WELCOME, ANALYST")
+
+st.markdown(
+    "You are working with a decision support system for analyzing clandestine communication networks "
+    "using **network science** and **mathematical optimization**."
 )
 
-c1, c2, c3 = st.columns(3)
-c1.metric("Members", 62)
-c2.metric("Observed links", 159)
-c3.metric("Analysis modes", 5)
+st.caption(
+    "Scope: static snapshot of observed communications (62 members). "
+    "Results reflect structural patterns rather than intent or hierarchy."
+)
+
+st.markdown("### What this system does")
+st.markdown(
+    "- **Identifies structurally important members** by combining multiple network perspectives.\n"
+    "- **Classifies members into functional roles** based on network position and connectivity.\n"
+    "- **Reveals substructures and vulnerabilities** via clustering and robustness analysis.\n"
+    "- **Evaluates intervention impact** by translating structural insight into disruption recommendations."
+)
+
+st.markdown("### What this system does")
+
+st.markdown(
+    "- **Identifies structurally important members** using multiple network perspectives.\n"
+    "- **Classifies members into functional roles** based on their position in the network.\n"
+    "- **Detects groups and structural weak points** within the network.\n"
+    "- **Assesses network resilience** by simulating the removal of key members.\n"
+    "- **Supports arrest planning** by translating analytical insights into actionable recommendations."
+)
+
 
 st.info(
-    "Use this system comparatively: explore patterns, contrast perspectives, "
-    "and treat disagreement as analytical signal."
+    "Use the system comparatively: explore patterns, contrast perspectives, and treat disagreement as analytical signal."
 )
+
+
+
 
 
