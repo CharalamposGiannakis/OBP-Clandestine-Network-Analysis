@@ -13,6 +13,12 @@ apply_tactical_theme()
 
 st.title("NETWORK ROLE IDENTIFICATION")
 st.caption("SOCIAL ROLE ANALYSIS ENGINE")
+st.markdown(
+    "Use this page to **assign an operational role** to each member (core / intermediate / peripheral) "
+    "based on their network position. \n\n"
+    "**Start:** pick a role method → inspect the colored network map → click a member on the right to see rationale and evidence."
+)
+
 st.info(
   "How to read: Colors = role type. Bigger nodes = more embedded in the network. "
   "Confidence = how much the different methods agree."
@@ -52,8 +58,13 @@ df_overlap = df_overlap.set_index("node", drop=False)
 method_ui = st.selectbox(
     "Role method (choose perspective)",
     ["Influence (flow)", "Core distance", "Importance type", "Similar contacts"],
-    index=0
+    index=0,
+    help=(
+        "Each method assigns roles using a different network signal. "
+        "Use Confidence to see how much the other methods agree with your choice."
+    )
 )
+
 
 METHOD_KEY = {
     "Influence (flow)": "Flow",
@@ -61,6 +72,17 @@ METHOD_KEY = {
     "Importance type": "Centrality",
     "Similar contacts": "Overlap"
 }[method_ui]
+
+with st.expander("What does this method measure?"):
+    if METHOD_KEY == "Flow":
+        st.write("**Influence (flow):** roles are based on how information can travel through multi-step routes to and from this member.")
+    elif METHOD_KEY == "Distance":
+        st.write("**Core distance:** roles depend on how many steps away a member is from the high-degree core.")
+    elif METHOD_KEY == "Centrality":
+        st.write("**Importance type:** roles reflect whether a member acts as a hub, bridge, or peripheral based on centrality signals.")
+    else:
+        st.write("**Similar contacts:** roles are assigned based on similarity in contact patterns (structural equivalence).")
+
 
 
 
@@ -173,16 +195,24 @@ ROLE_COLORS = {
 }
 
 def role_explanation(role):
+  if "Extreme peripheral" in role:
+    return "Very few connections; likely isolated or inactive."
   if "Core-like" in role:
     return "Highly connected and influential across multiple parts of the network."
   if "Intermediate" in role:
     return "Moderately connected; often acts as a link between core and peripheral members."
   if "Peripheral" in role:
     return "Limited interactions; participates in few network pathways."
-  return "Very few connections; likely isolated or inactive."
+  return "Role description not available."
+
 
 
 def why_we_think_so(role: str) -> list[str]:
+    if "Extreme peripheral" in role:
+        return [
+            "Has very few (or no) observable ties in the data.",
+            "Minimal network presence detected."
+        ]
     if "Core-like" in role:
         return [
             "Appears in many multi-step connection routes (high network presence).",
@@ -198,10 +228,8 @@ def why_we_think_so(role: str) -> list[str]:
             "Has few direct ties compared with most members.",
             "Rarely part of longer connection routes."
         ]
-    return [
-        "Has very few (or no) observable ties in the data.",
-        "Minimal network presence detected."
-    ]
+    return ["No explanation available."]
+
 
 
 def plot_network(G, df_display):
@@ -262,6 +290,10 @@ def plot_network(G, df_display):
 col1, col2 = st.columns([2.2, 1])
 with col1:
   st.subheader("Role Map")
+  st.caption(
+    "Legend: Core-like = red, Intermediate = orange, Peripheral = blue, Extreme peripheral = gray."
+  )
+
   st.plotly_chart(plot_network(G, df_display), use_container_width=True)
 with col2:
   st.subheader("Member inspection")
@@ -270,6 +302,8 @@ with col2:
   row = df_display.loc[node_id]
   contacts = get_direct_contacts(G, int(node_id))
 
+
+  st.caption("Need context? Open **Direct contacts** to see who this member is directly linked to.")
   with st.popover(f"Direct contacts ({len(contacts)})"):
       if contacts:
           st.write(", ".join(map(str, contacts)))
