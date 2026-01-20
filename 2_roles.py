@@ -11,10 +11,9 @@ from roles_logic import run_all_role_methods
 st.set_page_config(layout="wide")
 apply_tactical_theme()
 
-st.title("NETWORK ROLE IDENTIFICATION")
-st.caption("SOCIAL ROLE ANALYSIS ENGINE")
+st.title("Role Identification")
 
-with st.expander("Quick guide", expanded=True):
+with st.expander("📘Quick guide", expanded=True):
     st.markdown(
         """
         This page supports **operational role assignment** based on network structure.
