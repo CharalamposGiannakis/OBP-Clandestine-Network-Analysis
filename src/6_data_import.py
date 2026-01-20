@@ -14,14 +14,6 @@ with col_title:
     st.title("DATA INGEST TERMINAL")
     st.caption("EXTERNAL INTELLIGENCE IMPORT & VALIDATION LAYER")
 
-with col_status:
-    # Custom HTML to match your Tactical Theme
-    st.markdown("""
-        <div style="border: 1px solid #30363D; padding: 15px; background-color: rgba(9, 10, 11, 0.8);">
-            <p style="margin:0; font-family: 'Share Tech Mono', monospace; font-size:12px; color:#58a6ff;">MODULE: INGEST</p>
-            <p style="margin:0; font-family: 'Share Tech Mono', monospace; font-size:12px; color:#8b949e;">PROTOCOL: MTX_STRICT</p>
-        </div>
-    """, unsafe_allow_html=True)
 
 st.divider()
 
