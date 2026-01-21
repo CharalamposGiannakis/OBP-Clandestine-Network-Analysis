@@ -16,27 +16,10 @@ from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 from streamlit_agraph import Config, Edge, Node, agraph
 
 from ui_components import COLOR_STEEL, COLOR_WIRE
+# --- NEW IMPORT ---
+from src.data_manager import get_active_network
 
-FILE_PATH = "data/clandestine_network_example.mtx"
 HEIGH_PX = 650
-
-
-@st.cache_resource
-def load_graph(file_path: str) -> nx.Graph:
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"Could not find path: {file_path}")
-
-    A = mmread(file_path).tocsr()
-    G = nx.from_scipy_sparse_array(A)
-    G.remove_edges_from(nx.selfloop_edges(G))
-    return G
-
-
-@st.cache_data
-def get_fixed_layout(file_path):
-    G = load_graph(file_path)
-    return nx.spring_layout(G, seed=42)
-
 
 def theme_style():
     base = st.get_option("theme.base")
@@ -444,32 +427,39 @@ with tab_explore:
         with st.expander("📘 Quick guide", expanded=True):
             st.markdown(
                 """
-                **Step 1 — Choose an algorithm (left panel)**  
-                Pick a method to detect factions in the network.
+                **Step 1 — Choose an algorithm (left panel)** Pick a method to detect factions in the network.
 
-                **Step 2 — Adjust settings (optional)**  
-                Parameter _Resolution_ controls the level of detail and number of the communities. 
+                **Step 2 — Adjust settings (optional)** Parameter _Resolution_ controls the level of detail and number of the communities. 
                 For **Louvain** and **Leiden**, lower values produce fewer, larger communities while larger values create more, smaller communities. 
 
-                **Step 3 — Click Run**  
-                The network will update with color-coded factions.
+                **Step 3 — Click Run** The network will update with color-coded factions.
 
-                **Step 4 — Compare** 
-                Click on "Add to Comparison" to compare different algorithms. The results of the comparison are displayed in the Compare tab.
+                **Step 4 — Compare** Click on "Add to Comparison" to compare different algorithms. The results of the comparison are displayed in the Compare tab.
 
-                **Step 5 — Robustness Check**  
-                Click on the "Run Disturbance test" button to remove 5% of the edges of the graph and recompute the evaluation metrics
+                **Step 5 — Robustness Check** Click on the "Run Disturbance test" button to remove 5% of the edges of the graph and recompute the evaluation metrics
 
                 _Hint: click on the ? to learn more about the methods and results_
                 """
             )
 
-    G = load_graph(FILE_PATH)
-    fixed_pos = get_fixed_layout(FILE_PATH)
-    layout_map = {
-        int(u): (fixed_pos[u][0] * 1000, fixed_pos[u][1] * 1000) for u in G.nodes()
-    }
+    # --- CHANGED: Dynamic Data Loading ---
+    G, metadata = get_active_network()
+    # Clean up self loops just in case
+    G.remove_edges_from(nx.selfloop_edges(G))
+
+    # Calculate layout dynamically
+    @st.cache_data
+    def compute_layout(_graph, source_name):
+        pos = nx.spring_layout(_graph, seed=42)
+        return {int(u): (pos[u][0] * 1000, pos[u][1] * 1000) for u in _graph.nodes()}
+    
+    layout_map = compute_layout(G, metadata['name'])
+    # -------------------------------------
+
     st.sidebar.header("Controls")
+    # Display Active Target Name
+    st.sidebar.caption(f"Target: {metadata['name']}")
+
     st.sidebar.markdown(
         """
     <style>
@@ -756,16 +746,13 @@ with tab_explore:
 with tab_compare:
     with st.expander("How to read these results", expanded=True):
         st.markdown("""
-        **Modularity (Q)**  
-        Measures how strongly the network is divided into factions.  A high modularity score means the network has dense connections within the communities and sparse connections between them.
+        **Modularity (Q)** Measures how strongly the network is divided into factions.  A high modularity score means the network has dense connections within the communities and sparse connections between them.
 
-        **NMI (Normalized Mutual Information)**  
-        Measures how similar two faction results are.  
+        **NMI (Normalized Mutual Information)** Measures how similar two faction results are.  
         • 1.0 = identical  
         • 0.0 = completely different  
 
-        **ARI (Adjusted Rand Index)**  
-        Measures agreement between two results while correcting for chance.  
+        **ARI (Adjusted Rand Index)** Measures agreement between two results while correcting for chance.  
         • 1.0 = identical  
         • ~0 = random similarity  
 
