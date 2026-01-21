@@ -33,6 +33,14 @@ with st.expander("📘Quick guide", expanded=True):
 # We use the manager to get the G object directly
 G, metadata = get_active_network()
 
+@st.cache_data
+def compute_layout(_graph, source_name):
+    pos = nx.spring_layout(_graph, seed=42)
+    return {int(u): (pos[u][0] * 1000, pos[u][1] * 1000) for u in _graph.nodes()}
+
+layout_map = compute_layout(G, metadata["name"])
+
+
 # The roles_logic.py script expects a SciPy Sparse Matrix (A),
 # so we simply convert the NetworkX graph 'G' into that format.
 A = nx.to_scipy_sparse_array(G, format='csr')
@@ -239,7 +247,7 @@ def why_we_think_so(role: str) -> list[str]:
 
 
 def agraph_network(G: nx.Graph, df_display: pd.DataFrame):
-    pos = nx.spring_layout(G, seed=42)
+    x, y = layout_map[int(n)]
 
     # Build nodes
     nodes = []
@@ -259,28 +267,42 @@ def agraph_network(G: nx.Graph, df_display: pd.DataFrame):
                 size=12 + 18 * ((emb - df_display["embeddedness_score"].min()) /
                                 (df_display["embeddedness_score"].max() - df_display["embeddedness_score"].min() + 1e-9)),
                 color=ROLE_COLORS.get(role, "#95a5a6"),
-                title=f"Member {n}\nRole: {role}\nConfidence: {conf:.0%}",  # hover tooltip
-                x=float(pos[n][0]) * 1000,  # scale coordinates
+                title=f"Member {n}\nRole: {role}\nConfidence: {conf:.0%}",
+                x=float(pos[n][0]) * 1000,
                 y=float(pos[n][1]) * 1000,
+                font={"color": "white", "size": 16, "vadjust": -38},
             )
         )
+
+            
 
     # Build edges
     edges = []
     for u, v in G.edges():
-        edges.append(Edge(source=str(u), target=str(v)))
+        edges.append(
+            Edge(
+                source=str(int(u)),
+                target=str(int(v)),
+                color=COLOR_WIRE,
+                width=1,
+                opacity=0.35,
+                type="STRAIGHT",
+            )
+        )
+
 
     
     config = Config(
         width="100%",
         height=600,
         directed=False,
-        physics=False,          
-        hierarchical=False,
+        physics=False,
+        staticGraph=True,
         nodeHighlightBehavior=True,
-        highlightColor="#F7A7A6",
-        collapsible=False,
+        backgroundColor="#000000",  # or use their theme_style() logic
+        visjs_config={"interaction": {"hover": True}},
     )
+
 
     
     return agraph(nodes=nodes, edges=edges, config=config)
