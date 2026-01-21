@@ -561,7 +561,31 @@ apply_tactical_theme()
 
 st.title("Kemeny Constant — Edge Removal Analysis")
 
-# st.caption("Stateful multi-edge removal with Kemeny recomputation. Supports directed/weighted graphs.")
+# --- 1. DATA LOADING MOVED TO TOP ---
+G_raw, metadata = get_active_network()
+target_name = metadata.get("name", "Unknown")
+
+# --- SIDEBAR CONTROLS ---
+st.sidebar.header("Controls")
+st.sidebar.markdown(f"""
+<div style="font-family:'Share Tech Mono'; font-size:12px; color:#8b949e; margin-bottom:10px;">
+    dataset: <span style="color:#58a6ff">{target_name}</span>
+</div>
+""", unsafe_allow_html=True)
+
+#----Sidebar mode----->
+if "objective" not in st.session_state:
+    st.session_state.objective = "Disrupt communication (maximize K)"
+
+st.sidebar.subheader("Objective")
+
+st.sidebar.radio(
+    " ",
+    ["Disrupt communication (maximize K)", "Improve connectivity (minimize K)"],
+    key="objective",
+)
+want_disrupt = st.session_state.objective.startswith("Disrupt")
+#<----Sidebar mode----
 
 with st.expander("🧭 Quick guide", expanded=False):
     st.markdown(
@@ -587,24 +611,6 @@ Hint: keep “Compute recommendations” off during live demo; turn it on only w
         """
     )
 
-#----Sidebar mode----->
-if "objective" not in st.session_state:
-    st.session_state.objective = "Disrupt communication (maximize K)"
-
-st.sidebar.subheader("Objective")
-
-
-
-st.sidebar.radio(
-    " ",
-    ["Disrupt communication (maximize K)", "Improve connectivity (minimize K)"],
-    key="objective",
-)
-want_disrupt = st.session_state.objective.startswith("Disrupt")
-#<----Sidebar mode----
-
-# --- 1. DATA LOADING (Standardized) ---
-G_raw, metadata = get_active_network()
 
 # *** FIX: DETECT TARGET CHANGE ***
 # If the target name is different from what Kemeny last saw,

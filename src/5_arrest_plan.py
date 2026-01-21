@@ -13,6 +13,9 @@ from src.arrest_algorithms import (
     run_part5_pipeline, run_part5_pipeline_graph
 )
 
+# --- NEW IMPORT ---
+from src.data_manager import get_active_network
+
 FILE_PATH = "data/clandestine_network_example.mtx"
 
 GRAPH_HEIGHT_PX = 850
@@ -142,6 +145,9 @@ with st.expander("📘 Quick Guide", expanded=True):
         "_Hint: click on the ? to learn more about the methods and parameters_"
     )
 
+# --- DATA LOADING ---
+G_raw, metadata = get_active_network()
+target_name = metadata.get("name", "Unknown")
 
 # graph = load_graph_cached(FILE_PATH)
 graph = st.session_state.get("network_graph")
@@ -159,6 +165,15 @@ cap_now = (N + 1) // 2
 
 
 st.sidebar.header("Controls")
+
+# --- UPDATED SIDEBAR LABEL ---
+st.sidebar.markdown(f"""
+<div style="font-family:'Share Tech Mono'; font-size:12px; color:#8b949e; margin-bottom:10px;">
+    dataset: <span style="color:#58a6ff">{target_name}</span>
+</div>
+""", unsafe_allow_html=True)
+# -----------------------------
+
 st.sidebar.markdown("### Assignment settings")
 
 
