@@ -21,6 +21,18 @@ st.caption("""
     **Centrality Ranking** evaluates node importance using standard graph theory metrics.
 """)
 
+with st.expander("📘 Quick Guide", expanded=True):
+    st.markdown(
+        """
+        **Objective:** Classify network members into structural roles (Core, Intermediate, Peripheral) using comparative graph-theoretic algorithms.
+
+        **Workflow:**
+        1. **Select Method:** Choose an algorithm from the sidebar (e.g., *Influence Flow* or *Centrality*) to define how roles are calculated.
+        2. **Analyze Map:** View the **Role Map** to identify the structural hierarchy and distribution of roles.
+        3. **Inspect Members:** Select a node to view the **Confidence Score** (consensus across different algorithms) and detailed evidence for their assigned role.
+        """
+    )
+
 # --- 1. DATA LOADING ---
 G, metadata = get_active_network()
 
@@ -72,7 +84,7 @@ with st.sidebar:
     # Active Dataset Display
     st.markdown(f"""
     <div style="font-family:'Share Tech Mono'; font-size:12px; color:#8b949e; margin-bottom:10px;">
-        DATASET: <span style="color:#58a6ff">{metadata['name']}</span>
+        dataset: <span style="color:#58a6ff">{metadata['name']}</span>
     </div>
     """, unsafe_allow_html=True)
 

@@ -77,7 +77,7 @@ with st.sidebar:
 
     st.markdown(f"""
     <div style="font-family:'Share Tech Mono'; font-size:12px; color:#8b949e; margin-bottom:10px;">
-        TARGET: <span style="color:var(--color-accent)">{target_name}</span>
+        dataset: <span style="color:var(--color-accent)">{target_name}</span>
     </div>
     """, unsafe_allow_html=True)
     st.subheader("Roles settings")

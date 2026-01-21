@@ -63,7 +63,7 @@ with col_status:
         SYSTEM: ONLINE
     </p>
     <p style="margin:0; font-family: 'Share Tech Mono', monospace; font-size:12px; color: var(--color-text);">
-        DATASETS_LOADED: {count}
+        DATASETS LOADED: {count}
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -78,7 +78,7 @@ col_upload, col_select = st.columns([1, 1])
 # ==========================================
 with col_upload:
     with st.container(border=True):
-        st.subheader("Target Upload")
+        st.subheader("Data Upload")
         st.caption("System accepts verified Matrix Market (.mtx) formats only.")
         
         uploaded_files = st.file_uploader(
@@ -109,7 +109,7 @@ with col_upload:
 # ==========================================
 with col_select:
     with st.container(border=True):
-        st.subheader("Active Operation Target")
+        st.subheader("Active Operation Data")
         
         if not st.session_state['data_registry']:
             st.warning("NO DATA AVAILABLE")
@@ -136,8 +136,8 @@ with col_select:
                 
                 # Source Badge
                 src_type = data_pack.get('type', 'UNKNOWN')
-                st.markdown(f"<p style='font-family: \"Share Tech Mono\", monospace; color:#8b949e; font-size:12px;'>SOURCE_ORIGIN: <span style='color:var(--color-accent);'>[{src_type}]</span></p>", unsafe_allow_html=True)
-                st.success(f"TARGET ACTIVE: {selected_name}")
+                st.markdown(f"<p style='font-family: \"Share Tech Mono\", monospace; color:#8b949e; font-size:12px;'>data origin: <span style='color:var(--color-accent);'>[{src_type}]</span></p>", unsafe_allow_html=True)
+                st.success(f"DATA ACTIVE: {selected_name}")
                 
                 # Stats
                 m1, m2 = st.columns(2)
