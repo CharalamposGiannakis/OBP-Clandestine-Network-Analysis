@@ -310,13 +310,13 @@ with col2:
   st.subheader("Member inspection")
 
   # If user clicked a node in the graph, use it; otherwise fallback to selectbox
-    default_node = int(selected) if selected is not None else int(df_display["node"].iloc[0])
+  default_node = int(selected) if selected is not None else int(df_display["node"].iloc[0])
 
-    node_id = st.selectbox(
-        "Select a member",
-        df_display["node"].tolist(),
-        index=df_display["node"].tolist().index(default_node)
-    )
+  node_id = st.selectbox(
+      "Select a member",
+      df_display["node"].tolist(),
+      index=df_display["node"].tolist().index(default_node)
+  )
 
   row = df_display.loc[node_id]
   contacts = get_direct_contacts(G, int(node_id))
