@@ -59,11 +59,15 @@ with col_title:
 with col_status:
     count = len(st.session_state['data_registry'])
     st.markdown(f"""
-        <div style="border: 1px solid #30363D; padding: 15px; background-color: rgba(9, 10, 11, 0.8);">
-            <p style="margin:0; font-family: 'Share Tech Mono', monospace; font-size:12px; color:#58a6ff;">SYSTEM: ONLINE</p>
-            <p style="margin:0; font-family: 'Share Tech Mono', monospace; font-size:12px; color:#8b949e;">DATASETS_LOADED: {count}</p>
-        </div>
-    """, unsafe_allow_html=True)
+<div style="border: 1px solid var(--color-wire); padding: 15px; background-color: var(--box-bg);">
+    <p style="margin:0; font-family: 'Share Tech Mono', monospace; font-size:12px; color: var(--color-accent);">
+        SYSTEM: ONLINE
+    </p>
+    <p style="margin:0; font-family: 'Share Tech Mono', monospace; font-size:12px; color: var(--color-text);">
+        DATASETS_LOADED: {count}
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
 st.divider()
 
