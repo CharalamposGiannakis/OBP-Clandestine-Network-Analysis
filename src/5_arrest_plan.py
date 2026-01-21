@@ -194,15 +194,7 @@ elif community_method in ("Spectral", "Girvan-Newman"):
 
 
 elif community_method == "Infomap":
-    two_level = st.sidebar.checkbox(
-        "Two-level structure",
-        value=True,
-        key="infomap_two_level",
-        help=(
-            "If enabled, Infomap produces a simpler, high-level grouping. "
-            "Disable to allow more detailed nested factions."
-        ),
-    )
+    two_level = True
 
 same_comm_multiplier = st.sidebar.slider(
     "Same-community penalty",
@@ -286,10 +278,31 @@ if res is None:
         layout_map=layout_map,
     )
 else:
-    st.subheader("Regret summary")
-    col1, col2 = st.columns(2)
+    # st.subheader("Regret summary")
+    # col1, col2 = st.columns(2)
+    # col1.metric("Initial regret (R0)", f"{res['R0']:.2f}")
+    # col2.metric("After swaps (R1)", f"{res['R2']:.2f}")
+
+    st.subheader("Regret & assignment quality")
+
+    # --- compute extra metrics ---
+    cross_edges = sum(
+        1 for u, v in graph.edges()
+        if res["assignment2"][int(u)] != res["assignment2"][int(v)]
+    )
+    total_edges = graph.number_of_edges()
+    pct_cross = 0.0 if total_edges == 0 else 100.0 * cross_edges / total_edges
+
+    # --- layout ---
+    col1, col2, col3 = st.columns(3)
+
     col1.metric("Initial regret (R0)", f"{res['R0']:.2f}")
-    col2.metric("After swaps (R1)", f"{res['R2']:.2f}")
+    col2.metric("Final regret (R)", f"{res['R2']:.2f}", f"{res['R2'] - res['R0']:.2f}")
+    col3.metric(
+        "Cross department links",
+        f"{cross_edges}/{total_edges}",
+        # f"{pct_cross:.1f}%"
+    )
 
     with st.expander("What does “Regret” mean?", expanded=False):
         st.markdown(
@@ -327,18 +340,18 @@ else:
     st.write(f"Number of communities: **{len(res['communities'])}**")
     st.write("Sizes:", sizes)
 
-    st.subheader("Assignment quality checks")
-
-    cross_edges = sum(1 for u, v in graph.edges() if res["assignment2"][int(u)] != res["assignment2"][int(v)])
-    total_edges = graph.number_of_edges()
-    pct_cross = 0.0 if total_edges == 0 else 100.0 * cross_edges / total_edges
-
-    st.write(f"- Cross-department links: **{cross_edges}/{total_edges}** (**{pct_cross:.1f}%**)")
-    st.write(f"- Final regret (penalized cross links): **{res['R2']:.2f}**")
-
-    df_split = communities_split_summary(res["communities"], res["assignment2"])
-    st.write(
-        f"- Communities split across departments: **{df_split['split_across_depts'].sum()} / {len(res['communities'])}**")
+    # st.subheader("Assignment quality checks")
+    #
+    # cross_edges = sum(1 for u, v in graph.edges() if res["assignment2"][int(u)] != res["assignment2"][int(v)])
+    # total_edges = graph.number_of_edges()
+    # pct_cross = 0.0 if total_edges == 0 else 100.0 * cross_edges / total_edges
+    #
+    # st.write(f"- Cross-department links: **{cross_edges}/{total_edges}** (**{pct_cross:.1f}%**)")
+    # st.write(f"- Final regret (penalized cross links): **{res['R2']:.2f}**")
+    #
+    # df_split = communities_split_summary(res["communities"], res["assignment2"])
+    # st.write(
+    #     f"- Communities split across departments: **{df_split['split_across_depts'].sum()} / {len(res['communities'])}**")
 
     st.subheader("Assignment table")
     st.dataframe(df, use_container_width=True)
