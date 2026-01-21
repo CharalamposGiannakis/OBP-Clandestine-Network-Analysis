@@ -73,6 +73,13 @@ df_overlap = df_overlap.set_index("node", drop=False)
 
 # Method selector
 with st.sidebar:
+    target_name = metadata.get("name", "Unknown")
+
+    st.markdown(f"""
+    <div style="font-family:'Share Tech Mono'; font-size:12px; color:#8b949e; margin-bottom:10px;">
+        TARGET: <span style="color:var(--color-accent)">{target_name}</span>
+    </div>
+    """, unsafe_allow_html=True)
     st.subheader("Roles settings")
     
     method_ui = st.selectbox(
