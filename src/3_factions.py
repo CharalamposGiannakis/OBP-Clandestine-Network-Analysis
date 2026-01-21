@@ -1,4 +1,3 @@
-import os
 import random
 from collections import defaultdict
 
@@ -9,17 +8,17 @@ import numpy as np
 import streamlit as st
 from infomap import Infomap
 from networkx.algorithms.community import girvan_newman, modularity
-from scipy.io import mmread
 from scipy.optimize import linear_sum_assignment
 from sklearn.cluster import SpectralClustering
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 from streamlit_agraph import Config, Edge, Node, agraph
 
-from ui_components import COLOR_STEEL, COLOR_WIRE
 # --- NEW IMPORT ---
 from src.data_manager import get_active_network
+from ui_components import COLOR_STEEL, COLOR_WIRE
 
 HEIGH_PX = 650
+
 
 def theme_style():
     base = st.get_option("theme.base")
@@ -171,7 +170,8 @@ def perturb_graph(G: nx.Graph, frac: float = 0.05, seed=42):
     k = int(len(edges) * frac)
     remove = random.sample(edges, k)
     Gp.remove_edges_from(remove)
-    return Gp
+    removed_norm = {tuple(sorted((int(u), int(v)))) for u, v in remove}
+    return Gp, removed_norm
 
 
 def compute_modularity(G, communities):
@@ -195,13 +195,19 @@ def compute_nmi_ari(communities1, communities2, nodes):
     return nmi, ari
 
 
-def algo_run_signature(
-    algo: str, resolution: float | None = None, k: int | None = None
-) -> str:
+def algo_run_signature(algo: str, param_value: float | int | None = None) -> str:
     if algo in ("Louvain", "Leiden"):
-        return f"{algo}(res={resolution:.2f})"
+        return (
+            f"{algo}(res={float(param_value):.2f})"
+            if param_value is not None
+            else f"{algo}(res=n/a)"
+        )
     if algo in ("Spectral", "Girvan-Newman"):
-        return f"{algo}(k={k})"
+        return (
+            f"{algo}(k={int(param_value)})"
+            if param_value is not None
+            else f"{algo}(k=n/a)"
+        )
     return f"{algo}"
 
 
@@ -229,7 +235,7 @@ def validate_partition_robustness(
 
     initial_Q = compute_modularity(G, communities)
 
-    Gp = perturb_graph(G, frac=frac, seed=seed)
+    Gp, removed_edges = perturb_graph(G, frac=frac, seed=seed)
 
     if algo_name == "Louvain":
         communities_p = run_louvain(
@@ -260,6 +266,7 @@ def validate_partition_robustness(
         "ARI": ari,
         "communities_perturbed": communities_p,
         "G_perturbed": Gp,
+        "removed_edges": removed_edges,
     }
 
 
@@ -299,9 +306,12 @@ def build_agraph_factions(
     layout_map: dict[int, tuple[float, float]],
     height_px: int = HEIGH_PX,
     changed_nodes: dict[int, tuple[int, int]] | None = None,
+    removed_edges: set[tuple[int, int]] | None = None,
+    show_removed: bool = False,
 ):
     changed_nodes = changed_nodes or {}
     colours = colour_palette()
+    removed_edges = removed_edges or set()
 
     style = theme_style()
     nodes = []
@@ -349,14 +359,21 @@ def build_agraph_factions(
         nodes.append(Node(**node_kwargs))
 
     for u, v in G.edges():
+        e = tuple(sorted((int(u), int(v))))
+        is_removed = e in removed_edges
+
+        if is_removed and not show_removed:
+            continue
+
         edges.append(
             Edge(
                 source=str(int(u)),
                 target=str(int(v)),
                 color=COLOR_WIRE,
                 width=1,
-                opacity=style["edge_opacity"],
+                opacity=0.08 if is_removed else style["edge_opacity"],
                 type="STRAIGHT",
+                dashes=True if is_removed else False,
             )
         )
 
@@ -452,8 +469,8 @@ with tab_explore:
     def compute_layout(_graph, source_name):
         pos = nx.spring_layout(_graph, seed=42)
         return {int(u): (pos[u][0] * 1000, pos[u][1] * 1000) for u in _graph.nodes()}
-    
-    layout_map = compute_layout(G, metadata['name'])
+
+    layout_map = compute_layout(G, metadata["name"])
     # -------------------------------------
 
     st.sidebar.header("Controls")
@@ -517,11 +534,9 @@ with tab_explore:
     }
 
     st.sidebar.caption(algo_descriptions[algo])
-    resolution = None
-    k = None
-    assign_labels = None
+    param_value = None
     if algo in ("Louvain", "Leiden"):
-        resolution = st.sidebar.slider(
+        param_value = st.sidebar.slider(
             "Resolution",
             0.2,
             1.0,
@@ -529,11 +544,14 @@ with tab_explore:
             0.1,
             help="Higher values produce smaller communities. Lower values produce larger communities.",
         )
-    elif algo == "Spectral":
-        k = st.sidebar.slider("Resolution", 2, 10, 2, 1, help="Number of Communities")
+    elif algo in ("Spectral", "Girvan-Newman"):
+        param_value = st.sidebar.slider(
+            "Resolution", 2, 10, 2, 1, help="Number of Communities"
+        )
         assign_labels = "kmeans"
-    elif algo == "Girvan-Newman":
-        k = st.sidebar.slider("Resolution", 2, 10, 2, 1, help="Number of Communities")
+    else:
+        param_value = None
+
     run_clicked = st.sidebar.button("Run", type="primary")
     run_disturbance = False
     show_perturbed_graph = False
@@ -552,21 +570,28 @@ with tab_explore:
             value=False,
             help="Display the network after 5% of links are removed.",
         )
+        show_removed_edges = st.sidebar.checkbox(
+            "Show removed edges",
+            value=False,
+            help="Overlay the removed links as dashed edges.",
+        )
 
     if run_clicked:
         if algo == "Louvain":
-            communities = run_louvain(G, resolution=resolution)
+            communities = run_louvain(G, resolution=param_value)
         elif algo == "Leiden":
-            communities = run_leiden(G, resolution=resolution)
+            communities = run_leiden(G, resolution=param_value)
         elif algo == "Infomap":
             communities = run_infomap(G)
         elif algo == "Spectral":
-            communities = run_spectral(G, k=k, assign_labels=assign_labels)
+            communities = run_spectral(G, k=param_value, assign_labels=assign_labels)
         elif algo == "Girvan-Newman":
-            communities = run_girvan_newman(G, k=k)
+            communities = run_girvan_newman(G, k=param_value)
         st.session_state.communities = communities
         st.session_state.membership = communities_to_membership(communities)
         st.session_state.algo_used = algo
+        st.session_state.param_value = param_value
+        st.session_state.param_value
         st.session_state.disturbance_results = None
         st.rerun()
 
@@ -595,13 +620,7 @@ with tab_explore:
         st.markdown('<div id="disturbance-results"></div>', unsafe_allow_html=True)
 
         sig = algo_run_signature(
-            st.session_state.algo_used,
-            resolution=resolution
-            if (st.session_state.algo_used in ("Louvain", "Leiden"))
-            else None,
-            k=k
-            if (st.session_state.algo_used in ("Spectral", "Girvan-Newman"))
-            else None,
+            st.session_state.algo_used, param_value=st.session_state.param_value
         )
 
         b1, b2, b3 = st.columns([1.2, 1.2, 2])
@@ -613,21 +632,26 @@ with tab_explore:
             st.caption(f"Selected: **{len(st.session_state.compare_store)}**")
 
         if add_to_compare:
+            pv = st.session_state.get("param_value", None)
+
             st.session_state.compare_store[sig] = {
                 "signature": sig,
                 "algo": st.session_state.algo_used,
                 "params": {
-                    "resolution": resolution
-                    if (st.session_state.algo_used in ("Louvain", "Leiden"))
-                    else None,
-                    "k": k
-                    if (st.session_state.algo_used in ("Spectral", "Girvan-Newman"))
-                    else None,
+                    "param_value": pv,  # the one slider value you call "Resolution"
+                    "param_name": (
+                        "resolution"
+                        if st.session_state.algo_used in ("Louvain", "Leiden")
+                        else "k"
+                        if st.session_state.algo_used in ("Spectral", "Girvan-Newman")
+                        else None
+                    ),
                 },
                 "communities": communities,
                 "membership": st.session_state.membership,
                 "summary": compute_run_summary(G, communities),
             }
+
             st.toast(f"Added: {sig}", icon="✅")
 
         if go_compare:
@@ -655,19 +679,22 @@ with tab_explore:
         )
 
         if run_disturbance:
+            pv = st.session_state.get("param_value", None)
+
             st.session_state.disturbance_results = validate_partition_robustness(
                 G,
                 algo_name=st.session_state.algo_used,
                 communities=communities,
                 frac=0.05,
                 seed=42,
-                resolution=resolution
-                if (st.session_state.algo_used in ("Louvain", "Leiden"))
+                resolution=float(pv)
+                if st.session_state.algo_used in ("Louvain", "Leiden")
                 else None,
-                k=k
-                if (st.session_state.algo_used in ("Spectral", "Girvan-Newman"))
+                k=int(pv)
+                if st.session_state.algo_used in ("Spectral", "Girvan-Newman")
                 else None,
             )
+
             st.session_state.scroll_to_disturbance = True
             st.rerun()
         if st.session_state.disturbance_results is None:
@@ -719,15 +746,19 @@ with tab_explore:
                     results["communities_perturbed"]
                 )
                 build_agraph_factions(
-                    results["G_perturbed"],
+                    G,  # <- original graph so removed edges exist
                     membership=membership_after,
                     layout_map=layout_map,
                     height_px=HEIGH_PX,
                     changed_nodes=changed_nodes,
+                    removed_edges=results.get("removed_edges", set()),
+                    show_removed=show_removed_edges,
                 )
 
                 if len(changed_nodes) > 0:
                     render_changed_legend()
+                else:
+                    st.success("No node changed cluster")
 
         with st.expander("↓ Community details", expanded=False):
             st.write(f"Number of communities: **{len(communities)}**")
@@ -878,3 +909,4 @@ with tab_compare:
             if st.button("Remove selected run"):
                 st.session_state.compare_store.pop(remove_key, None)
                 st.rerun()
+
