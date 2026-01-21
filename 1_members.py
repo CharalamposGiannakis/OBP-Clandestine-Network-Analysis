@@ -75,7 +75,26 @@ with st.sidebar:
              st.session_state.target = first_node
 
         st.write(f"FOCUS: **NODE {st.session_state.target}**")
-        max_hops = st.slider("ANALYSIS RADIUS (HOPS)", 1, 8, 2)
+        
+        # --- DYNAMIC SLIDER LOGIC ---
+        # 1. Calculate how far the network actually goes from this node
+        # (This is fast for most intel networks)
+        try:
+            all_paths = nx.single_source_shortest_path_length(G, st.session_state.target)
+            max_network_depth = max(all_paths.values()) if all_paths else 1
+        except:
+            max_network_depth = 8
+            
+        # 2. Cap the slider at 8 (to keep colors simple), 
+        # but lower it if the network is small.
+        slider_limit = min(max_network_depth, 8)
+        
+        # 3. Ensure min value (1) doesn't exceed max value
+        if slider_limit < 1: slider_limit = 1
+        
+        max_hops = st.slider("ANALYSIS RADIUS (HOPS)", 1, slider_limit, min(2, slider_limit))
+        # ---------------------------
+
         target_node = st.session_state.target
     else:
         st.markdown("### CENTRALITY_SETTINGS")
@@ -116,7 +135,7 @@ else:
             return f"#{rank} (ID:{node})"
         return str(node)
 
-# --- 5. BUILD GRAPH ELEMENTS (The Fix) ---
+# --- 5. BUILD GRAPH ELEMENTS ---
 for node in G.nodes():
     x_pos, y_pos = layout_map.get(node, (0,0))
     nodes.append(Node(
@@ -126,15 +145,13 @@ for node in G.nodes():
         color=get_color(node), 
         x=x_pos, 
         y=y_pos,
-        # FIX: "Tactical Badge" Style
-        # We enforce White Text on a Dark Background.
-        # This is readable in BOTH Light Mode and Dark Mode.
+        # TACTICAL LABEL STYLE
         font={
             'color': 'white',  
-            'background': '#090A0B', # Matches our COLOR_VOID
+            'background': '#090A0B', 
             'face': 'monospace', 
             'size': 14,
-            'strokeWidth': 0, # Removes outlines for a cleaner look
+            'strokeWidth': 0, 
             'align': 'center'
         }
     ))
@@ -155,19 +172,52 @@ for u, v in G.edges():
         type="STRAIGHT"
     ))
 
-# --- 6. RENDER ---
-config = Config(width=1100, height=700, directed=False, physics=False, staticGraph=True)
+# --- 6. RENDER (THE DOUBLE TAP FIX) ---
+
+# 1. Height Trick (Keeps the visualizer awake)
+dynamic_height = 700 if st.session_state.target % 2 == 0 else 701
+
+config = Config(
+    width=1100, 
+    height=dynamic_height, 
+    directed=False, 
+    physics=False, 
+    staticGraph=True
+)
 
 st.markdown(f"### SYSTEM_VIEW: {analysis_mode.upper()}")
+
+# 2. Draw Graph
 return_value = agraph(nodes=nodes, edges=edges, config=config)
 
+# 3. Check for "Ghost Click" requirement
+# If we just updated the target in the previous run, we force ONE MORE run 
+# to ensure the visualizer catches up.
+if "needs_second_kick" not in st.session_state:
+    st.session_state.needs_second_kick = False
+
+if st.session_state.needs_second_kick:
+    st.session_state.needs_second_kick = False
+    st.rerun()
+
+# 4. Main Click Handler
 if analysis_mode == "Tactical Flow (Click)" and return_value is not None:
     try:
         clicked_id = int(return_value)
+        
+        # If the click is NEW
         if clicked_id != st.session_state.target:
+            
+            # A. Update the target
             st.session_state.target = clicked_id
+            
+            # B. Schedule the "Ghost Click" (The second automatic rerun)
+            st.session_state.needs_second_kick = True
+            
+            # C. Trigger the first rerun
             st.rerun()
-    except:
+            
+    except ValueError:
         pass
 
 # --- 7. DATA TABLE ---
