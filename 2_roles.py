@@ -114,7 +114,7 @@ METHOD_KEY = {
     "Similar contacts": "Overlap"
 }[method_ui]
 
-st.caption(f"Selected role method: **{method_ui}**")
+
 
 
 # flow based method for display; other methods are confidence indicators
@@ -391,8 +391,6 @@ with col2:
   st.caption("These are relative network indicators (use for comparison, not absolute interpretation).")
 
   with st.expander("Evidence (advanced)"):
-    st.write(f"Selected method: **{method_ui}**")
-    
     if METHOD_KEY == "Flow":
     
       emb = float(row["embeddedness_score"])
