@@ -4,6 +4,8 @@ import numpy as np
 import scipy.io
 import networkx as nx
 import plotly.graph_objects as go
+from streamlit_agraph import agraph, Node, Edge, Config
+
 
 from ui_components import apply_tactical_theme, COLOR_VOID, COLOR_WIRE, COLOR_STEEL, COLOR_ALERT
 from roles_logic import run_all_role_methods
@@ -232,60 +234,50 @@ def why_we_think_so(role: str) -> list[str]:
 
 
 
-def plot_network(G, df_display):
-  pos = nx.spring_layout(G, seed=42)
+def agraph_network(G: nx.Graph, df_display: pd.DataFrame):
+    pos = nx.spring_layout(G, seed=42)
 
-  edge_x, edge_y = [], []
-  for u, v in G.edges():
-    x0, y0 = pos[u]
-    x1, y1 = pos[v]
-    edge_x += [x0, x1, None]
-    edge_y += [y0, y1, None]
+    # Build nodes
+    nodes = []
+    for n in G.nodes():
+        role = df_display.loc[n, "role_label"]
+        conf = float(df_display.loc[n, "confidence"])
+        emb = float(df_display.loc[n, "embeddedness_score"])
 
-  fig = go.Figure()
-  fig.add_trace(go.Scatter(
-    x=edge_x, y=edge_y, mode="lines", hoverinfo="none", line=dict(width=0.6, color="rgba(180,180,180,0.35)")))
-  
-  node_x, node_y, node_color, hover = [], [], [], []
-  sizes = []
+        
+        nodes.append(
+            Node(
+                id=str(n),
+                label=str(n),
+                size=12 + 18 * ((emb - df_display["embeddedness_score"].min()) /
+                                (df_display["embeddedness_score"].max() - df_display["embeddedness_score"].min() + 1e-9)),
+                color=ROLE_COLORS.get(role, "#95a5a6"),
+                title=f"Member {n}\nRole: {role}\nConfidence: {conf:.0%}",  # hover tooltip
+                x=float(pos[n][0]) * 1000,  # scale coordinates
+                y=float(pos[n][1]) * 1000,
+            )
+        )
 
-  emb = df_display["embeddedness_score"].to_numpy()
-  emb_min, emb_max = float(np.min(emb)), float(np.max(emb))
-  denom = (emb_max - emb_min) if emb_max > emb_min else 1.0
+    # Build edges
+    edges = []
+    for u, v in G.edges():
+        edges.append(Edge(source=str(u), target=str(v)))
 
-
-  for n in G.nodes():
-    x, y = pos[n]
-    node_x.append(x); node_y.append(y)
-
-    role = df_display.loc[n,"role_label"]
-    conf = df_display.loc[n, "confidence"]
-    node_color.append(ROLE_COLORS.get(role, "#95a5a6"))
-
-    s = 12 + 18 * ((df_display.loc[n,"embeddedness_score"] - emb_min) / denom)
-    sizes.append(s)
-
-    hover.append(
-      f"Member {n}"
-      f"<br>Role: {role}"
-      f"<br>Confidence: {conf:.0%}"
-
+    
+    config = Config(
+        width="100%",
+        height=600,
+        directed=False,
+        physics=False,          
+        hierarchical=False,
+        nodeHighlightBehavior=True,
+        highlightColor="#F7A7A6",
+        collapsible=False,
     )
 
-  fig.add_trace(go.Scatter(
-    x=node_x, y=node_y,
-    mode="markers",
-    marker=dict(size=sizes, color=node_color, line=dict(width=1,color="rgba(20,20,20,0.6)")),
-    hovertext=hover,
-    hoverinfo="text"
-  ))
+    
+    return agraph(nodes=nodes, edges=edges, config=config)
 
-  fig.update_layout(
-    margin=dict(l=0,r=0,t=0,b=0),
-    showlegend=False,
-    height=600
-  )
-  return fig
 
 
 st.caption(
@@ -312,11 +304,20 @@ with col1:
     "Legend: Core-like = red, Intermediate = orange, Peripheral = blue, Extreme peripheral = gray."
   )
 
-  st.plotly_chart(plot_network(G, df_display), use_container_width=True)
+  selected = agraph_network(G, df_display)
+
 with col2:
   st.subheader("Member inspection")
 
-  node_id = st.selectbox("Select a member", df_display["node"].tolist(), index=0)
+  # If user clicked a node in the graph, use it; otherwise fallback to selectbox
+    default_node = int(selected) if selected is not None else int(df_display["node"].iloc[0])
+
+    node_id = st.selectbox(
+        "Select a member",
+        df_display["node"].tolist(),
+        index=df_display["node"].tolist().index(default_node)
+    )
+
   row = df_display.loc[node_id]
   contacts = get_direct_contacts(G, int(node_id))
 
