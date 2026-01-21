@@ -243,32 +243,34 @@ def why_we_think_so(role: str) -> list[str]:
 
 
 
-def agraph_network(G: nx.Graph, df_display: pd.DataFrame, layout_map: dict):
-    # Build nodes
+def agraph_network(G: nx.Graph, df_display: pd.DataFrame):
+    pos = nx.spring_layout(G, seed=42)
+
     nodes = []
     for n in G.nodes():
-        if n not in df_display.index: 
+        if n not in df_display.index:
             continue
-        
+
         role = df_display.loc[n, "role_label"]
         conf = float(df_display.loc[n, "confidence"])
         emb = float(df_display.loc[n, "embeddedness_score"])
 
-        x, y = layout_map[int(n)]
-        
         nodes.append(
             Node(
                 id=str(n),
                 label=str(n),
-                size=12 + 18 * ((emb - df_display["embeddedness_score"].min()) /
-                                (df_display["embeddedness_score"].max() - df_display["embeddedness_score"].min() + 1e-9)),
+                size=12 + 18 * (
+                    (emb - df_display["embeddedness_score"].min()) /
+                    (df_display["embeddedness_score"].max()
+                     - df_display["embeddedness_score"].min() + 1e-9)
+                ),
                 color=ROLE_COLORS.get(role, "#95a5a6"),
                 title=f"Member {n}\nRole: {role}\nConfidence: {conf:.0%}",
-                x=float(x) * 1000,
-                y=float(y) * 1000,
-                font={"color": "white", "size": 16, "vadjust": -38},
+                x=float(pos[n][0]) * 1000,
+                y=float(pos[n][1]) * 1000,
             )
         )
+
 
             
 
@@ -329,7 +331,8 @@ with col1:
     "Legend: Core-like = red, Intermediate = orange, Peripheral = blue, Extreme peripheral = gray."
   )
 
-  selected = agraph_network(G, df_display, layout_map)
+  selected = agraph_network(G, df_display)
+
 
 
 with col2:
