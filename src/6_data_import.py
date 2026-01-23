@@ -153,4 +153,19 @@ with col_select:
     # Help Expander
     with st.expander("DATA STRUCTURE SPECIFICATION"):
         st.markdown("**REQUIRED FORMAT: Matrix Market (.mtx)**")
-        st.download_button("DOWNLOAD TEMPLATE", data="%%MatrixMarket matrix coordinate pattern symmetric\n5 5 4\n1 2\n", file_name="template.mtx")
+        template_data = """%%MatrixMarket matrix coordinate pattern symmetric
+        6 6 7
+        1 2
+        2 3
+        3 4
+        4 5
+        5 6
+        6 1
+        2 5
+        """
+        st.download_button(
+            label="DOWNLOAD TEMPLATE", 
+            data=template_data, 
+            file_name="template.mtx",
+            mime="text/plain"
+        )
