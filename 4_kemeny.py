@@ -16,26 +16,24 @@ Notes
 - Kemeny formula used: K = tr( (I - P + 1*pi)^(-1) ).
 """
 
-import os
-from dataclasses import dataclass
 
+from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 import networkx as nx
 import streamlit as st
-from scipy.io import mmread
 from scipy.sparse.csgraph import connected_components
-
+from math import gcd
+from collections import deque
 from ui_components import (
     apply_tactical_theme,
     COLOR_WIRE,
     COLOR_STEEL,
     COLOR_ALERT,
-    COLOR_TEXT,
 )
-# --- NEW IMPORT ---
 from src.data_manager import get_active_network
+
 
 # -------------------------
 # Settings
@@ -258,9 +256,13 @@ def normalize_edge(u: int, v: int, directed: bool) -> tuple[int, int]:
     return a, b
 
 
+def canon(e: tuple[int, int]) -> tuple[int, int]: 
+    return normalize_edge(int(e[0]), int(e[1]), directed=settings.directed)
+
+
 def apply_edge_removals(A0: sp.csr_matrix, removed_set: set[tuple[int, int]], directed: bool) -> sp.csr_matrix:
     if not removed_set:
-        return A0
+        return A0.copy()
     B = A0.tolil(copy=True)
     for (u, v) in removed_set:
         B[u, v] = 0.0
@@ -301,49 +303,6 @@ def fixed_layout3d_from_A(A_data, A_indices, A_indptr, shape, seed: int = 42) ->
 
     # Scale up so the 3D plot isn't cramped.
     return {int(n): (float(x) * 1000.0, float(y) * 1000.0, float(z) * 1000.0) for n, (x, y, z) in pos.items()}
-
-
-def _edge_segments_from_adjacency(
-    A: sp.csr_matrix,
-    directed: bool,
-    layout3d: dict[int, tuple[float, float, float]],
-) -> tuple[list[float], list[float], list[float]]:
-    """Return x/y/z arrays suitable for a single Plotly line trace (with None separators)."""
-    xs: list[float] = []
-    ys: list[float] = []
-    zs: list[float] = []
-    coo = A.tocoo()
-
-    if directed:
-        for u, v in zip(coo.row, coo.col):
-            u = int(u)
-            v = int(v)
-            if u == v:
-                continue
-            x0, y0, z0 = layout3d.get(u, (0.0, 0.0, 0.0))
-            x1, y1, z1 = layout3d.get(v, (0.0, 0.0, 0.0))
-            xs += [x0, x1, None]
-            ys += [y0, y1, None]
-            zs += [z0, z1, None]
-        return xs, ys, zs
-
-    # Undirected: keep each edge once (u < v)
-    seen: set[tuple[int, int]] = set()
-    for u, v in zip(coo.row, coo.col):
-        u = int(u)
-        v = int(v)
-        if u == v:
-            continue
-        a, b = (u, v) if u < v else (v, u)
-        if (a, b) in seen:
-            continue
-        seen.add((a, b))
-        x0, y0, z0 = layout3d.get(a, (0.0, 0.0, 0.0))
-        x1, y1, z1 = layout3d.get(b, (0.0, 0.0, 0.0))
-        xs += [x0, x1, None]
-        ys += [y0, y1, None]
-        zs += [z0, z1, None]
-    return xs, ys, zs
 
 
 def _edge_trace_points(
@@ -554,6 +513,66 @@ def show_node(i: int) -> int:
     return int(i) + 1
 
 
+def _undirected_period_is_two_bipartite(G: nx.Graph) -> bool:
+    """Returns True if undirected component is bipartite => period 2."""
+    # Fast BFS 2-coloring
+    color = {}
+    for start in G.nodes():
+        if start in color:
+            continue
+        color[start] = 0
+        q = deque([start])
+        while q:
+            u = q.popleft()
+            for v in G.neighbors(u):
+                if v not in color:
+                    color[v] = 1 - color[u]
+                    q.append(v)
+                elif color[v] == color[u]:
+                    return False
+    return True
+
+
+def directed_period_gcd(G: nx.DiGraph) -> int:
+    if G.number_of_nodes() <= 1:
+        return 1
+    if not G.is_directed():
+        return 1
+
+    root = next(iter(G.nodes()))
+    dist = {root: 0}
+    q = deque([root])
+    while q:
+        u = q.popleft()
+        for v in G.successors(u):
+            if v not in dist:
+                dist[v] = dist[u] + 1
+                q.append(v)
+
+    if len(dist) != G.number_of_nodes():
+        return 1
+
+    d = 0
+    for u, v in G.edges():
+        delta = dist[u] + 1 - dist[v]
+        if delta != 0:
+            d = gcd(d, abs(delta))
+            if d == 1:
+                return 1
+    return d if d != 0 else 1
+
+
+def detect_periodicity(G_comp: nx.Graph | nx.DiGraph, directed: bool) -> int:
+    n = G_comp.number_of_nodes()
+    if n < 3:
+        return 1
+
+    if not directed:
+        return 2 if _undirected_period_is_two_bipartite(G_comp.to_undirected()) else 1
+
+    return directed_period_gcd(G_comp)
+
+
 # -------------------------
 # Streamlit Page
 # -------------------------
@@ -612,70 +631,60 @@ Hint: keep “Compute recommendations” off during live demo; turn it on only w
     )
 
 
-# *** FIX: DETECT TARGET CHANGE ***
-# If the target name is different from what Kemeny last saw,
-# we must RESET the removals, otherwise we apply old edges to the new graph.
-if "kemeny_target_cache" not in st.session_state:
-    st.session_state.kemeny_target_cache = ""
-
-if st.session_state.kemeny_target_cache != metadata['name']:
-    # New target detected! Wipe state.
-    st.session_state.removed_set = set()
-    st.session_state.removed_edges = []
-    st.session_state.selected_edges = set()
-    st.session_state.kemeny_target_cache = metadata['name']
-    st.rerun() # Restart page with clean state
-
 # Convert to Matrix for Kemeny math
 A_raw = nx.to_scipy_sparse_array(G_raw, format='csr')
 
-SHOW_GRAPH_SETTINGS = False
-
-if SHOW_GRAPH_SETTINGS:
-    with st.expander("↓ Graph settings", expanded=False):
-        # status line (neutral)
-        detected_msg = (
-            f"Detected: {'directed' if st.session_state.get('k_directed', False) else 'undirected'}, "
-            f"{'weighted' if st.session_state.get('k_keep_weights', False) else 'unweighted'}"
-        )
-        st.caption(detected_msg)
-
-        # optional override
-        override = st.checkbox("Override detection", value=False, key="k_override_detect")
-
-        if override:
-            directed = st.checkbox("Directed graph", value=st.session_state.get("k_directed", False), key="k_directed_manual")
-            keep_weights = st.checkbox("Use weights (do not binarize)", value=st.session_state.get("k_keep_weights", False), key="k_keep_weights_manual")
-        else:
-            directed = st.session_state.get("k_directed", False)
-            keep_weights = st.session_state.get("k_keep_weights", False)
-
-        lazy_alpha = st.slider("Lazy random walk alpha (stability)", 0.0, 0.5, 0.0, 0.05, key="k_lazy_alpha")
-
-        st.caption(
-            "Undirected mode symmetrizes by average: A <- (A + A^T)/2. "
-            "Lazy alpha > 0 can improve numerical stability for periodic chains."
-        )
-else:
-    # still define settings so the page runs
-    directed = st.session_state.get("k_directed", False)
-    keep_weights = st.session_state.get("k_keep_weights", False)
-    lazy_alpha = float(st.session_state.get("k_lazy_alpha", 0.0))
-
-
-settings = GraphSettings(
-    directed=directed, 
-    keep_weights=keep_weights, 
-    lazy_alpha=float(lazy_alpha)
-    )
-
+# ---- Detect graph properties from the raw adjacency ----
 is_dir, has_w = detect_graph_properties(A_raw)
 
-# Reset defaults when dataset changes (using metadata name as the ID)
-if st.session_state.get("_kemeny_dataset_path") != metadata['name']:
-    st.session_state["_kemeny_dataset_path"] = metadata['name']
-    st.session_state["k_directed"] = bool(is_dir)
-    st.session_state["k_keep_weights"] = bool(has_w)
+# Keep one dataset id for Kemeny (you already use metadata['name'])
+dataset_id = metadata.get("name", "Unknown")
+
+# Initialize cache keys
+if "_kemeny_dataset_id" not in st.session_state:
+    st.session_state["_kemeny_dataset_id"] = ""
+
+# If dataset changed: reset removals AND refresh detection defaults
+if st.session_state["_kemeny_dataset_id"] != dataset_id:
+    st.session_state["_kemeny_dataset_id"] = dataset_id
+
+    # wipe edit state
+    st.session_state.removed_set = set()
+    st.session_state.removed_edges = []
+    st.session_state.selected_edges = set()
+   
+    # default alpha
+    st.session_state.setdefault("k_lazy_alpha", 0.0)
+
+    st.rerun()
+
+# Strict automatic: always follow detected properties
+directed = bool(is_dir)
+keep_weights = bool(has_w)
+
+st.caption(
+    f"Graph Detected: **{'directed' if directed else 'undirected'}**, "
+    f"**{'weighted' if keep_weights else 'unweighted'}**"
+)
+
+allowed_alphas = [0.0, 0.05, 0.10]
+current_alpha = float(st.session_state.get("k_lazy_alpha", 0.0))
+if current_alpha not in allowed_alphas:
+    current_alpha = 0.0
+
+alpha_choice = st.selectbox(
+    "Lazy walk α (stability)",
+    options=allowed_alphas,
+    index=allowed_alphas.index(current_alpha),
+    help="Use α>0 only if periodicity is detected or if stability issues occur.",
+    key="k_lazy_alpha",
+)
+
+settings = GraphSettings(
+    directed=directed,
+    keep_weights=keep_weights,
+    lazy_alpha=float(alpha_choice),
+)
 
 A0 = preprocess_adjacency(A_raw, settings=settings)
 
@@ -698,7 +707,9 @@ comp_set = set(comp_nodes.tolist())
 
 G_state = build_nx_graph(A_state, directed=settings.directed)
 
-# Connectivity status
+# -------------------------
+# Connectivity status (for UI)
+# -------------------------
 if settings.directed:
     connected_now = nx.is_strongly_connected(G_state) if G_state.number_of_nodes() > 0 else False
     conn_label = "Strongly connected"
@@ -706,12 +717,54 @@ else:
     connected_now = nx.is_connected(G_state) if G_state.number_of_nodes() > 0 else False
     conn_label = "Connected"
 
-# Baseline K0 always computed on baseline A0 with same settings
-scope0, K0, n0 = kemeny_score(A0, directed=settings.directed, lazy_alpha=settings.lazy_alpha)
+# -------------------------
+# Periodicity detection (BEFORE K computation)
+# -------------------------
+G_comp = G_state.subgraph(comp_nodes).copy()
 
-# Current K on A_state
-scope_now, K_now, n_now = kemeny_score(A_state, directed=settings.directed, lazy_alpha=settings.lazy_alpha)
+period = 1
+if G_comp.number_of_nodes() >= 3:
+    if settings.directed:
+        if nx.is_strongly_connected(G_comp):
+            period = detect_periodicity(G_comp, directed=True)
+    else:
+        period = detect_periodicity(G_comp, directed=False)
 
+periodic_and_alpha0 = (
+    (period > 1)
+    and (settings.lazy_alpha == 0.0)
+    and (len(st.session_state.removed_set) > 0)
+)
+
+if periodic_and_alpha0:
+    st.warning(
+        f"⚠️ Periodic chain detected (period = {period}). "
+        "For numerical stability, choose α>0 (lazy walk) and restart from baseline."
+    )
+    if st.button("Restart from baseline (keep current α)", width="stretch"):
+        st.session_state.removed_set = set()
+        st.session_state.removed_edges = []
+        st.session_state.selected_edges = set()
+        st.rerun()
+
+# -------------------------
+# Kemeny scores (AFTER periodicity check)
+# -------------------------
+try:
+    scope0, K0, n0 = kemeny_score(
+        A0, directed=settings.directed, lazy_alpha=settings.lazy_alpha
+    )
+    scope_now, K_now, n_now = kemeny_score(
+        A_state, directed=settings.directed, lazy_alpha=settings.lazy_alpha
+    )
+except Exception as ex:
+    st.error(
+        f"Kemeny computation failed ({type(ex).__name__}). "
+        "If this happened after removals, try setting α>0 and restarting from baseline."
+    )
+    st.stop()
+
+# Disconnection warning
 if scope_now != "Full graph":
     st.warning(
         f"⚠️ Graph disconnected → K is computed on {scope_now} (size={n_now}); "
@@ -767,9 +820,6 @@ interactive_ok = render_graph_panel_3d_interactive(A0=A0, A_state=A_state, setti
 selected_edges: set[tuple[int, int]] = set(st.session_state.get("selected_edges", set()))
 removed_set: set[tuple[int, int]] = set(st.session_state.get("removed_set", set()))
 
-def canon(e: tuple[int, int]) -> tuple[int, int]:
-    return normalize_edge(int(e[0]), int(e[1]), directed=settings.directed)
-
 # Canonicalize both sets so (u,v) and (v,u) match in undirected mode
 selected_edges = {canon(e) for e in selected_edges}
 removed_set = {canon(e) for e in removed_set}
@@ -796,8 +846,6 @@ def _parse_edge_1based(s: str):
                 return None
     return None
 
-def canon(e: tuple[int, int]) -> tuple[int, int]:
-    return normalize_edge(int(e[0]), int(e[1]), directed=settings.directed)
 
 with st.form("edge_add_form", clear_on_submit=True):
     c1, c2 = st.columns([2, 1])
@@ -926,10 +974,6 @@ with st.expander(
         comp_nodes, full_used, comp_label = main_component_nodes(A_state, directed=settings.directed)
         comp_set = set(comp_nodes.tolist())
 
-        # Helper: canonical edge (prevents (u,v) vs (v,u) mismatch for undirected)
-        def canon(e: tuple[int, int]) -> tuple[int, int]:
-            return normalize_edge(int(e[0]), int(e[1]), directed=settings.directed)
-
         # Canonicalize session sets
         st.session_state.removed_set = {canon(e) for e in set(st.session_state.get("removed_set", set()))}
         st.session_state.removed_edges = [canon(e) for e in list(st.session_state.get("removed_edges", []))]
@@ -995,135 +1039,122 @@ with st.expander(
 
             st.rerun()
 
-
-st.subheader("Next-step recommendations (Top 5)")
-
 # --- objective state (needed even when recommendations are off) ---
 if "objective" not in st.session_state:
     st.session_state.objective = "Disrupt communication (maximize K)"
 
-with st.expander(" Next-step recommendations (Top 5)", expanded=st.session_state.get("compute_reco", False)):
-    compute_reco = st.checkbox(
-        "Compute recommendations (slow; runs many Kemeny computations)",
-        key="compute_reco",
-        help="Turn this on only when you need the top-5 list. Keeps the page fast and stable."
-    )
+st.subheader("Next-step recommendations (Top 5)")
+st.caption(
+    "Computes the best NEXT edge removal given the current removed set. "
+)
 
-    if not compute_reco:
-        st.info("Recommendations are off. Turn on the checkbox to compute the top-5.")
-    else:
-        st.caption(
-            "Recommendations are computed for the NEXT removal given the current removed set. "
-            "K is always computed on Full graph if possible; otherwise on LCC/LSCC."
+# Candidate edges
+edges_df = remaining_edges_df_from_edges0(edges0, st.session_state.removed_set)
+if edges_df.empty:
+    st.info("No candidates remaining.")
+else:
+    rows = []
+    # Evaluate each candidate as next removal
+    skipped = 0
+    errors = []
+
+    for _, r in edges_df.iterrows():
+        e = (int(r["u"]), int(r["v"]))
+        e = normalize_edge(e[0], e[1], directed=settings.directed)
+
+        removed_next = set(st.session_state.removed_set)
+        removed_next.add(e)
+
+        try:
+            A_next = apply_edge_removals(A0, removed_next, directed=settings.directed)
+            scope_next, K_next, n_next = kemeny_score(
+                A_next, directed=settings.directed, lazy_alpha=settings.lazy_alpha
+            )
+        except Exception as ex:
+            skipped += 1
+            if len(errors) < 3:
+                errors.append(f"{e}: {type(ex).__name__}")
+            continue
+
+        rows.append(
+            {
+                "u": e[0],
+                "v": e[1],
+                "K_next": float(K_next),
+                "dK_next": float(K_next - K_now),
+                "dK_vs_K0": float(K_next - K0),
+                "scope_next": scope_next,
+                "comp_size_next": int(n_next),
+            }
         )
-        want_disrupt = st.session_state.objective.startswith("Disrupt")
 
-        # Candidate edges
-        edges_df = remaining_edges_df_from_edges0(edges0, st.session_state.removed_set)
-        if edges_df.empty:
-            st.info("No candidates remaining.")
-        else:
-            rows = []
-            # Evaluate each candidate as next removal
-            skipped = 0
-            errors = []
+    if skipped:
+        st.warning(f"Skipped {skipped} candidate edges due to numerical/graph edge-case errors. Examples: {', '.join(errors)}")
 
-            for _, r in edges_df.iterrows():
-                e = (int(r["u"]), int(r["v"]))
-                e = normalize_edge(e[0], e[1], directed=settings.directed)
+    df = pd.DataFrame(rows)
+    if df.empty:
+        st.info("No valid candidates (all were skipped).")
+    else:
+        # --- Add 1-based display columns ---
+        df["u_show"] = df["u"] + 1
+        df["v_show"] = df["v"] + 1
+        df["edge"] = df["u_show"].astype(str) + "-" + df["v_show"].astype(str)
 
-                removed_next = set(st.session_state.removed_set)
-                removed_next.add(e)
+        # Sort for recommendation direction
+        df_sorted = df.sort_values("dK_next", ascending=(not want_disrupt))
+        df_reco = df_sorted.head(5).copy()
+        df_opp = df_sorted.tail(5).copy().sort_values("dK_next", ascending=(not want_disrupt))
+        df_shrink = df.sort_values(["comp_size_next", "dK_next"], 
+                                    ascending=[True, not want_disrupt]).head(5).copy()
 
-                try:
-                    A_next = apply_edge_removals(A0, removed_next, directed=settings.directed)
-                    scope_next, K_next, n_next = kemeny_score(
-                        A_next, directed=settings.directed, lazy_alpha=settings.lazy_alpha
-                    )
-                except Exception as ex:
-                    skipped += 1
-                    if len(errors) < 3:
-                        errors.append(f"{e}: {type(ex).__name__}")
-                    continue
+        reco_title = "Recommended next edges" + (" (increase K most)" if want_disrupt else " (decrease K most)")
+        opp_title = "Opposite-effect edges" + (" (decrease K most)" if want_disrupt else " (increase K most)")
 
-                rows.append(
-                    {
-                        "u": e[0],
-                        "v": e[1],
-                        "K_next": float(K_next),
-                        "dK_next": float(K_next - K_now),
-                        "dK_vs_K0": float(K_next - K0),
-                        "scope_next": scope_next,
-                        "comp_size_next": int(n_next),
-                    }
-                )
+        # ---------- Recommended ----------
+        st.markdown(f"**{reco_title}**")
 
-            if skipped:
-                st.warning(f"Skipped {skipped} candidate edges due to numerical/graph edge-case errors. Examples: {', '.join(errors)}")
+        # Apply buttons (select the exact edge used in K_next computation)
+        st.caption("Click a button to add that edge to *Selected edges* (then press **Remove selected edges** below).")
+        btn_cols = st.columns(len(df_reco))
+        for col, (_, r) in zip(btn_cols, df_reco.iterrows()):
+            u0 = int(r["u"])      # internal 0-based
+            v0 = int(r["v"])
+            u1 = int(r["u_show"]) # display 1-based
+            v1 = int(r["v_show"])
+            label = f"{u1}-{v1}" if not settings.directed else f"{u1}→{v1}"
 
-            df = pd.DataFrame(rows)
-            if df.empty:
-                st.info("No valid candidates (all were skipped).")
-            else:
-                # --- Add 1-based display columns ---
-                df["u_show"] = df["u"] + 1
-                df["v_show"] = df["v"] + 1
-                df["edge"] = df["u_show"].astype(str) + "-" + df["v_show"].astype(str)
+            if col.button(label, key=f"apply_reco_{u0}_{v0}"):
+                e = normalize_edge(u0, v0, directed=settings.directed)
+                sel = set(st.session_state.selected_edges)
+                sel.add(e)
+                st.session_state.selected_edges = sel
+                st.rerun()
 
-                # Sort for recommendation direction
-                df_sorted = df.sort_values("dK_next", ascending=(not want_disrupt))
-                df_reco = df_sorted.head(5).copy()
-                df_opp = df_sorted.tail(5).copy().sort_values("dK_next", ascending=(not want_disrupt))
-                df_shrink = df.sort_values(["comp_size_next", "dK_next"], ascending=[True, False]).head(5).copy()
+        st.dataframe(
+            df_reco[["edge", "dK_next", "dK_vs_K0", "K_next", "scope_next", "comp_size_next"]],
+            hide_index=True,
+            width="stretch",
+        )
 
-                reco_title = "Recommended next edges" + (" (increase K most)" if want_disrupt else " (decrease K most)")
-                opp_title = "Opposite-effect edges" + (" (decrease K most)" if want_disrupt else " (increase K most)")
+        # ---------- Opposite ----------
+        st.markdown(f"**{opp_title}**")
+        st.dataframe(
+            df_opp.assign(edge=(df_opp["u_show"].astype(str) + "-" + df_opp["v_show"].astype(str)))[
+                ["edge", "dK_next", "dK_vs_K0", "K_next", "scope_next", "comp_size_next"]
+            ],
+            hide_index=True,
+            width="stretch",
+        )
 
-                # ---------- Recommended ----------
-                st.markdown(f"**{reco_title}**")
-
-                # Apply buttons (select the exact edge used in K_next computation)
-                st.caption("Click a button to add that edge to *Selected edges* (then press **Remove selected edges** below).")
-                btn_cols = st.columns(len(df_reco))
-                for col, (_, r) in zip(btn_cols, df_reco.iterrows()):
-                    u0 = int(r["u"])      # internal 0-based
-                    v0 = int(r["v"])
-                    u1 = int(r["u_show"]) # display 1-based
-                    v1 = int(r["v_show"])
-                    label = f"{u1}-{v1}" if not settings.directed else f"{u1}→{v1}"
-
-                    if col.button(label, key=f"apply_reco_{u0}_{v0}"):
-                        e = normalize_edge(u0, v0, directed=settings.directed)
-                        sel = set(st.session_state.selected_edges)
-                        sel.add(e)
-                        st.session_state.selected_edges = sel
-                        st.rerun()
-
-                st.dataframe(
-                    df_reco[["edge", "dK_next", "dK_vs_K0", "K_next", "scope_next", "comp_size_next"]],
-                    hide_index=True,
-                    width="stretch",
-                )
-
-                # ---------- Opposite ----------
-                st.markdown(f"**{opp_title}**")
-                st.dataframe(
-                    df_opp.assign(edge=(df_opp["u_show"].astype(str) + "-" + df_opp["v_show"].astype(str)))[
-                        ["edge", "dK_next", "dK_vs_K0", "K_next", "scope_next", "comp_size_next"]
-                    ],
-                    hide_index=True,
-                    width="stretch",
-                )
-
-                # ---------- Shrink / isolate ----------
-                st.markdown("**Edges most likely to isolate actors / shrink the main component**")
-                st.dataframe(
-                    df_shrink.assign(edge=(df_shrink["u_show"].astype(str) + "-" + df_shrink["v_show"].astype(str)))[
-                        ["edge", "dK_next", "dK_vs_K0", "K_next", "scope_next", "comp_size_next"]
-                    ],
-                    hide_index=True,
-                    width="stretch",
-                )
+        # ---------- Shrink / isolate ----------
+        st.markdown("**Edges most likely to shrink the main cmponent** (disconnect risk)")
+        st.dataframe(
+            df_shrink.assign(edge=(df_shrink["u_show"].astype(str) + "-" + df_shrink["v_show"].astype(str)))[
+                ["edge", "dK_next", "dK_vs_K0", "K_next", "scope_next", "comp_size_next"]
+            ],
+            hide_index=True,
+            width="stretch",
+        )
 
 
 # Interpretation (objective-aware)
