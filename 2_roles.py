@@ -8,6 +8,7 @@ from streamlit_agraph import agraph, Node, Edge, Config
 
 from ui_components import apply_tactical_theme, COLOR_VOID, COLOR_WIRE, COLOR_STEEL, COLOR_ALERT
 from roles_logic import run_all_role_methods
+from collections import counter
 
 # --- NEW IMPORT ---
 from src.data_manager import get_active_network
@@ -75,32 +76,66 @@ df_overlap = df_overlap.set_index("node", drop=False)
 with st.sidebar:
     target_name = metadata.get("name", "Unknown")
 
-    st.markdown(f"""
-    <div style="font-family:'Share Tech Mono'; font-size:12px; color:#8b949e; margin-bottom:10px;">
-        dataset: <span style="color:var(--color-accent)">{target_name}</span>
-    </div>
-    """, unsafe_allow_html=True)
-    st.subheader("Roles settings")
-    
-    method_ui = st.selectbox(
-        "Role method",
-        ["Influence (flow)", "Core distance", "Importance type", "Similar contacts"],
-        index=None,
-        placeholder="Select a method...",
-        help=(
-            "Each method assigns roles using a different network signal. "
-            "Confidence shows how much the other methods agree."
-        )
+    # --- Section header (matches DSS look) ---
+    st.markdown(
+        """
+        <div style="margin-top:6px; margin-bottom:10px;">
+          <div style="font-family:'Share Tech Mono', monospace; font-size:14px; font-weight:700;">
+            Analysis Configuration
+          </div>
+          <div style="height:1px; background: rgba(255,255,255,0.12); margin-top:10px;"></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    if method_ui:
-        if method_ui == "Influence (flow)":
-            st.caption("Measures influence via multi-step information flow through the network.")
-        elif method_ui == "Core distance":
-            st.caption("Measures how far each member is from the highly connected core.")
-        elif method_ui == "Importance type":
-            st.caption("Identifies hubs, bridges, and peripheral members using centrality signals.")
-        elif method_ui == "Similar contacts":
-            st.caption("Groups members by similarity of their contact patterns.")
+
+    # --- Small label + help icon feel ---
+    st.markdown(
+        """
+        <div style="display:flex; align-items:center; gap:8px; margin: 4px 0 6px 0;">
+          <div style="font-size:12px; color:#8b949e;">Select Method</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # --- Dataset line (optional) ---
+    st.markdown(
+        f"""
+        <div style="font-family:'Share Tech Mono', monospace; font-size:12px; color:#8b949e; margin-bottom:10px;">
+            dataset: <span style="color:var(--color-accent)">{target_name}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # --- RADIO (gives the dot selector like your screenshot) ---
+    method_ui = st.radio(
+        label="",
+        options=[
+            "Influence (flow)",
+            "Core distance",
+            "Importance type",
+            "Similar contacts",
+        ],
+        index=0,
+        label_visibility="collapsed",
+    )
+
+    # --- Description directly under selection ---
+    desc = {
+        "Influence (flow)": "Measures influence via multi-step information flow through the network.",
+        "Core distance": "Measures how far each member is from the highly connected core.",
+        "Importance type": "Identifies hubs, bridges, and peripheral members using centrality signals.",
+        "Similar contacts": "Groups members by similarity of their contact patterns.",
+    }
+    st.caption(desc[method_ui])
+
+    st.markdown(
+        "<div style='height:1px; background: rgba(255,255,255,0.12); margin-top:12px;'></div>",
+        unsafe_allow_html=True,
+    )
+
 
 
 if method_ui is None:
@@ -380,10 +415,32 @@ with col2:
   st.markdown(f"**Member:** {node_id}")
   st.markdown(f"**Assigned role:** {row['role_label']}")
   st.progress(float(row["confidence"]))
-  st.caption(f"Confidence: {row['confidence']:.0%} (agreement vs other methods)")
+  st.caption(
+      f"Confidence: {row['confidence']:.0%}",
+      help=(
+          "Confidence = fraction of role-identification methods that assign the same role "
+          "as the selected method."
+      )
+  )
+  votes = method_vote_for_node(int(node_id))
+  counts = Counter(votes.values())
+  top_role, top_count = count.most_common(1)[0]
+  n_methods = len(votes)  
   if row["confidence"] < 0.5:
-    st.warning("Low agreement across methods. Treat this role as uncertain.")
-
+    st.warning("Low agreement across methods. This member sits between multiple roles.")
+    st.markdown("**Roles suggested by each method:**")
+    for method_name, role_name in votes.items():
+        st.write(f"• {method_name}: **{role_name}**")
+    st.caption(
+        f"Most common role: **{top_role}** ({top_count}/{n_methods}). "
+        + "Other plausible roles: "
+        + ", ".join(
+            f"{role} ({count}/{n_methods})"
+            for role, count in counts.items()
+            if role != top_role
+        )
+    )
+    
   st.write(role_explanation(row["role_label"]))
   for bullet in why_we_think_so(row["role_label"]):
     st.write("• " + bullet)
