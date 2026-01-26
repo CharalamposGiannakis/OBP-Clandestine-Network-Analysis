@@ -437,30 +437,27 @@ with col2:
   st.caption(
       f"Agreement with selected method: {agreement_selected:.0%}",
       help=(
-          "Agreement with selected method: fraction of methods that assign the SAME role as the chosen method. "
+          "Fraction of methods that assign the SAME role as the chosen method. "
           "Example: 1 out of 4 → 25%."
       )
   )
 
   st.caption(
-      f"Consensus (majority): **{consensus_role}** ({consensus_strength:.0%})",
+      f"Majority: **{consensus_role}** ({consensus_strength:.0%})",
       help=(
-          "Consensus: most common role across all methods. "
+          "Majority: most common role across all methods. "
           "Strength: fraction of methods voting for that role."
       )
   )
 
     # Warnings (two different situations)
   if consensus_strength <= 0.5:
-        st.warning("Low overall agreement: methods are split across roles (no clear majority).")
+        st.warning("Low overall agreement. Multiple role interpretations are plausible")
   elif agreement_selected <= 0.5 and row["role_label"] != consensus_role:
         st.warning("Selected method disagrees with the majority. Review alternative roles below.")
 
     # Show the alternatives when it's not unanimous OR when selected method disagrees
   if consensus_strength < 1.0 or agreement_selected <= 0.5:
-        if runner_up_role is not None and consensus_strength <= 0.75:
-            st.info(f"This member sits between **{consensus_role}** and **{runner_up_role}**.")
-
         with st.expander("Roles suggested by each method", expanded=(agreement_selected <= 0.5)):
             for m in ["Flow", "Distance", "Centrality", "Overlap"]:
                 st.write(f"• **{m}**: {votes[m]}")
