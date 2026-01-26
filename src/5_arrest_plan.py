@@ -23,7 +23,6 @@ GRAPH_HEIGHT_PX = 850
 
 # helpers for dashboard
 
-
 @st.cache_resource
 def load_graph_cached(file_path: str) -> nx.Graph:
     G = load_graph(file_path)
@@ -33,8 +32,6 @@ def load_graph_cached(file_path: str) -> nx.Graph:
 def compute_fixed_layout(_graph: nx.Graph):
     pos = nx.spring_layout(_graph, seed=42, k=1.2)
     return {int(u): (pos[u][0] * 1000, pos[u][1] * 1000) for u in _graph.nodes()}
-
-
 
 
 def assignment_to_df(assignment: dict[int, int]) -> pd.DataFrame:
@@ -145,7 +142,7 @@ with st.expander("📘 Quick guide", expanded=True):
         "_Hint: click on the ? to learn more about the methods and parameters_"
     )
 
-# --- DATA LOADING ---
+# DATA LOADING
 G_raw, metadata = get_active_network()
 target_name = metadata.get("name", "Unknown")
 
@@ -154,7 +151,6 @@ graph = st.session_state.get("network_graph")
 if graph is None:
     graph = load_graph_cached(FILE_PATH)  # fallback to example file
 
-# st.write("Using imported graph:", "network_graph" in st.session_state) #TODO aaaa
 st.write("Nodes:", graph.number_of_nodes(), "Edges:", graph.number_of_edges())
 
 
@@ -166,13 +162,12 @@ cap_now = (N + 1) // 2
 
 st.sidebar.header("Controls")
 
-# --- UPDATED SIDEBAR LABEL ---
+# UPDATED SIDEBAR
 st.sidebar.markdown(f"""
 <div style="font-family:'Share Tech Mono'; font-size:12px; color:#8b949e; margin-bottom:10px;">
     dataset: <span style="color:#58a6ff">{target_name}</span>
 </div>
 """, unsafe_allow_html=True)
-# -----------------------------
 
 st.sidebar.markdown("### Assignment settings")
 
@@ -238,7 +233,7 @@ same_comm_multiplier = st.sidebar.slider(
 
 # graph-aware slider ranges + defaults
 max_iters_min = 10
-max_iters_max = max(200, min(2000, 30 * N))          # grows with N, capped
+max_iters_max = max(200, min(1000, 20 * N))          # grows with N, capped
 default_max_iters = max(50, min(max_iters_max, 10 * N))
 
 candidate_k_min = 4
@@ -275,21 +270,6 @@ if "result" not in st.session_state:
     st.session_state.result = None
 
 
-# if run_clicked:
-#     st.session_state.result = run_part5_pipeline(
-#         FILE_PATH,
-#         same_comm_multiplier=same_comm_multiplier,
-#         seed=123,
-#         max_move_iters=max_iters,
-#         max_swap_iters=max_iters,
-#         candidate_k=candidate_k,
-#         community_method=community_method,
-#         resolution=resolution,
-#         k=k,
-#         assign_labels=assign_labels,
-#         two_level=two_level,
-#     )
-
 if run_clicked:
     G = st.session_state.get("network_graph")
     if G is None:
@@ -317,10 +297,6 @@ G_display = res["graph"] if res is not None else graph
 layout_map = compute_fixed_layout(G_display)
 
 
-# st.write(f"Nodes: **{G_display.number_of_nodes()}**  |  Edges: **{G_display.number_of_edges()}**")
-
-
-
 if res is None:
     st.info("Click **Run pipeline** to compute an assignment.")
     dummy_assignment = {int(u): 0 for u in graph.nodes()}  # all A just to render
@@ -330,10 +306,6 @@ if res is None:
         layout_map=layout_map,
     )
 else:
-    # st.subheader("Regret summary")
-    # col1, col2 = st.columns(2)
-    # col1.metric("Initial regret (R0)", f"{res['R0']:.2f}")
-    # col2.metric("After swaps (R1)", f"{res['R2']:.2f}")
 
     st.subheader("Regret & assignment quality")
 
@@ -393,19 +365,6 @@ else:
     sizes = sorted([len(c) for c in res["communities"]], reverse=True)
     st.write(f"Number of communities: **{len(res['communities'])}**")
     st.write("Sizes:", sizes)
-
-    # st.subheader("Assignment quality checks")
-    #
-    # cross_edges = sum(1 for u, v in graph.edges() if res["assignment2"][int(u)] != res["assignment2"][int(v)])
-    # total_edges = graph.number_of_edges()
-    # pct_cross = 0.0 if total_edges == 0 else 100.0 * cross_edges / total_edges
-    #
-    # st.write(f"- Cross-department links: **{cross_edges}/{total_edges}** (**{pct_cross:.1f}%**)")
-    # st.write(f"- Final regret (penalized cross links): **{res['R2']:.2f}**")
-    #
-    # df_split = communities_split_summary(res["communities"], res["assignment2"])
-    # st.write(
-    #     f"- Communities split across departments: **{df_split['split_across_depts'].sum()} / {len(res['communities'])}**")
 
     st.subheader("Assignment table")
     st.dataframe(df, use_container_width=True)

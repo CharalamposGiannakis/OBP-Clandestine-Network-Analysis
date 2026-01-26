@@ -20,7 +20,6 @@ Dept = int  # Dept A = 0, Dept B = 1
 
 #DATA INIT
 
-
 def _resolve_path(path: str):
     path = Path(path)
     project_root = Path(__file__).resolve().parents[1]
@@ -46,14 +45,14 @@ def load_graph(path: str):
 
 #HELPER FUNCTIONS
 
-def edge_penalty(u, v, original_w, comm_id ,same_comm_multiplier = 2.0,): #TODO original weight is techincally always 1 so might be deleted
-    """Function returning higher penalty if nodes are in the same community"""
+def edge_penalty(u, v, original_w, comm_id ,same_comm_multiplier = 2.0,): # weight is always 1 technically
+    """Return higher penalty if nodes are in the same community"""
     if comm_id[u] == comm_id[v]:
         return original_w * same_comm_multiplier
     return original_w
 
 def compute_regret(graph, assignment, comm_id, same_comm_multiplier = 2.0):
-    """Function that computes regret per connection between nodes (members)"""
+    """Compute regret per connection between nodes (members)"""
     R = 0.0
     for u, v, data in graph.edges(data=True):
         w = float(data.get("weight", 1.0))
@@ -62,10 +61,10 @@ def compute_regret(graph, assignment, comm_id, same_comm_multiplier = 2.0):
             R += w_eff
     return R
 
-#COMMMUNIT ASSIGNMENT PER DEPARTMENT
+#COMMMUNITY ASSIGNMENT PER DEPARTMENT
 
 @dataclass
-class AssignResult: #TODO renaming maybe idk
+class AssignResult:
     assignment: Dict[Node, Dept]
     sizeA: int
     sizeB: int
@@ -78,7 +77,7 @@ def build_comm_id(communities):
             comm_id[n] = cid
     return comm_id
 
-def community_first_assignment(graph, communities, capacity): #TODO capacity var to delete
+def community_first_assignment(graph, communities, capacity):
     cap = int(capacity)
 
     #sort comms and change to a list of sets
@@ -124,7 +123,6 @@ def community_first_assignment(graph, communities, capacity): #TODO capacity var
     return AssignResult(assignment=assignment, sizeA=len(A), sizeB=len(B), capacity=cap)
 
 #NODE SWAP IMPROVEMENT
-
 def delta_regret_if_flip(graph, node, assignment: Dict[Node, Dept], comm_id, same_comm_multiplier= 2.0):
     """
     Compute dR if node u is flipped to the other department.
@@ -144,7 +142,6 @@ def delta_regret_if_flip(graph, node, assignment: Dict[Node, Dept], comm_id, sam
 
     return dR
 
-#TODO these are not yet done
 
 def improve_with_greedy_moves(graph, assignment: Dict[Node, Dept], comm_id: Dict[Node, int], capacity,same_comm_multiplier, max_iters):
     """
@@ -258,76 +255,6 @@ def improve_with_balanced_swaps(
 
 Node = int
 
-# def detect_communities(
-#     graph,
-#     method,
-#     resolution= 0.4,
-#     k= 2,
-#     assign_labels= "kmeans",
-#     two_level= True,):
-#     """Return list[set[node]] communities for the chosen method"""
-#
-#     if method == "Louvain":
-#         return [set(map(int, c)) for c in nx.community.louvain_communities(graph, resolution=resolution, seed=42, weight="weight")]
-#
-#     if method == "Leiden":
-#         nodes = list(graph.nodes())
-#         node_to_idx = {n: i for i, n in enumerate(nodes)}
-#         idx_to_node = {i: n for n, i in node_to_idx.items()}
-#         edges = [(node_to_idx[u], node_to_idx[v]) for u, v in graph.edges()]
-#         igG = ig.Graph(n=len(nodes), edges=edges, directed=False)
-#
-#         part = la.find_partition(
-#             igG,
-#             la.RBConfigurationVertexPartition,
-#             resolution_parameter=resolution,
-#             seed=42,
-#         )
-#         return [{int(idx_to_node[i]) for i in block} for block in part]
-#
-#     if method == "Infomap":
-#         flags = "--silent"
-#         if two_level:
-#             flags = "--two-level --silent"
-#         im = Infomap(flags)
-#         for u, v, data in graph.edges(data=True):
-#             w = float(data.get("weight", 1.0))
-#             im.add_link(int(u), int(v), w)
-#         im.run()
-#
-#         comm_to_nodes = defaultdict(set)
-#         for node in im.iterTree():
-#             if node.isLeaf():
-#                 comm_to_nodes[node.moduleIndex()].add(int(node.physicalId))
-#         return list(comm_to_nodes.values())
-#
-#     if method == "Spectral":
-#         A = nx.to_scipy_sparse_array(graph, format="csr")
-#         A.indices = A.indices.astype("int32", copy=False)
-#         A.indptr = A.indptr.astype("int32", copy=False)
-#
-#         sc = SpectralClustering(
-#             n_clusters=k,
-#             affinity="precomputed",
-#             assign_labels=assign_labels,
-#             random_state=42,
-#         )
-#         labels = sc.fit_predict(A)
-#
-#         nodes = list(graph.nodes())
-#         comms = defaultdict(set)
-#         for n, c in zip(nodes, labels):
-#             comms[int(c)].add(int(n))
-#         return list(comms.values())
-#
-#     if method == "Girvan-Newman":
-#         gen = girvan_newman(graph)
-#         communities_tuple = None
-#         for _ in range(k - 1):
-#             communities_tuple = next(gen)
-#         return [set(map(int, c)) for c in communities_tuple]
-#
-#     raise ValueError(f"Unknown community detection method: {method}")
 
 def detect_communities(
     graph,
@@ -435,8 +362,6 @@ def run_part5_pipeline(
     cap = math.ceil(N / 2) #max department capacity
 
     # Clustering logic
-    #communities = get_communities_placeholder(G, k=2, seed=seed) #TODO Change to louvain clusters
-    # communities = nx.community.louvain_communities(graph, seed=seed, weight="weight")
     communities = detect_communities(
         graph,
         method=community_method,
@@ -501,6 +426,7 @@ def run_part5_pipeline(
         "assignment2": assignment2,
     }
 
+#Final version put together
 def run_part5_pipeline_graph(
     graph: nx.Graph,
     same_comm_multiplier: float = 2.0,
