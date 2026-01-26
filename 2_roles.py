@@ -8,7 +8,8 @@ from streamlit_agraph import agraph, Node, Edge, Config
 
 from ui_components import apply_tactical_theme, COLOR_VOID, COLOR_WIRE, COLOR_STEEL, COLOR_ALERT
 from roles_logic import run_all_role_methods
-from collections import counter
+from collections import Counter
+
 
 # --- NEW IMPORT ---
 from src.data_manager import get_active_network
