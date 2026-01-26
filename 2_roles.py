@@ -425,7 +425,7 @@ with col2:
   )
   votes = method_vote_for_node(int(node_id))
   counts = Counter(votes.values())
-  top_role, top_count = count.most_common(1)[0]
+  top_role, top_count = counts.most_common(1)[0]
   n_methods = len(votes)  
   if row["confidence"] < 0.5:
     st.warning("Low agreement across methods. This member sits between multiple roles.")
