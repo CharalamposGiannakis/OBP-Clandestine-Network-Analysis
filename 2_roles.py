@@ -462,10 +462,7 @@ with col2:
             for m in ["Flow", "Distance", "Centrality", "Overlap"]:
                 st.write(f"• **{m}**: {votes[m]}")
 
-            st.caption(
-                "Vote distribution: "
-                + " | ".join([f"{role}: {cnt}/{n_methods}" for role, cnt in counts.most_common()])
-            )
+            
 
     
   st.write(role_explanation(row["role_label"]))
