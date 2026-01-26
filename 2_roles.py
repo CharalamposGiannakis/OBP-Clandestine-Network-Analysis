@@ -374,7 +374,7 @@ def agraph_network(G: nx.Graph, df_display: pd.DataFrame):
 st.caption(
     "Summary: role counts are based on the selected method. "
     "Avg agreement = mean agreement with the selected method. "
-    "Avg consensus = mean majority strength across all methods."
+    "Avg majority agreement = mean majority strength across all methods."
 )
 
 
