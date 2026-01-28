@@ -573,6 +573,36 @@ def detect_periodicity(G_comp: nx.Graph | nx.DiGraph, directed: bool) -> int:
     return directed_period_gcd(G_comp)
 
 
+def _history_signature() -> tuple:
+    """Unique signature of the current state that should define the history point."""
+    # Use removed_set + dataset + alpha + directed/weights mode as signature.
+    # Important: frozenset for stability, not list ordering.
+    return (
+        st.session_state.get("_kemeny_dataset_id", st.session_state.get("_kemeny_dataset_path", "")),
+        float(settings.lazy_alpha),
+        bool(settings.directed),
+        bool(settings.keep_weights),
+        frozenset(st.session_state.get("removed_set", set())),
+    )
+
+def _append_history_point(K_now: float, scope_now: str):
+    sig = _history_signature()
+    if st.session_state.k_history_last_sig == sig:
+        return  # no real change, avoid duplicates
+
+    step = len(st.session_state.k_history)  # sequential steps in history
+    st.session_state.k_history.append(
+        {
+            "step": step,
+            "K": float(K_now),
+            "scope": scope_now,
+            "edges_removed": len(st.session_state.get("removed_set", set())),
+            "alpha": float(settings.lazy_alpha),
+        }
+    )
+    st.session_state.k_history_last_sig = sig
+
+
 # -------------------------
 # Streamlit Page
 # -------------------------
@@ -606,7 +636,7 @@ st.sidebar.radio(
 want_disrupt = st.session_state.objective.startswith("Disrupt")
 #<----Sidebar mode----
 
-with st.expander("🧭 Quick guide", expanded=False):
+with st.expander("📘 Quick guide", expanded=False):
     st.markdown(
         """
 *Step 1 — Choose edges to remove*
@@ -656,6 +686,10 @@ if st.session_state["_kemeny_dataset_id"] != dataset_id:
     # default alpha
     st.session_state.setdefault("k_lazy_alpha", 0.0)
 
+    # Kemeny Plot history
+    st.session_state.k_history = []
+    st.session_state.k_history_last_sig = None
+
     st.rerun()
 
 # Strict automatic: always follow detected properties
@@ -686,6 +720,20 @@ settings = GraphSettings(
     lazy_alpha=float(alpha_choice),
 )
 
+#---Kemeny Plot History--->
+if "k_alpha_cache" not in st.session_state:
+    st.session_state.k_alpha_cache = float(settings.lazy_alpha)
+
+if float(settings.lazy_alpha) != float(st.session_state.k_alpha_cache):
+    st.session_state.k_alpha_cache = float(settings.lazy_alpha)
+    st.session_state.removed_set = set()
+    st.session_state.removed_edges = []
+    st.session_state.selected_edges = set()
+    st.session_state.k_history = []
+    st.session_state.k_history_last_sig = None
+    st.rerun()
+#<---Kemeny Plot History---
+
 A0 = preprocess_adjacency(A_raw, settings=settings)
 
 # Baseline edges list
@@ -698,6 +746,11 @@ if "removed_edges" not in st.session_state:
     st.session_state.removed_edges = [] # ordered list for display
 if "selected_edges" not in st.session_state:
     st.session_state.selected_edges = set() # what user clicked
+# --- History for plotting K vs step ---
+if "k_history" not in st.session_state:
+    st.session_state.k_history = []
+if "k_history_last_sig" not in st.session_state:
+    st.session_state.k_history_last_sig = None
 
 # Build current adjacency/graph from removals
 A_state = apply_edge_removals(A0, st.session_state.removed_set, directed=settings.directed)
@@ -770,6 +823,20 @@ if scope_now != "Full graph":
         f"⚠️ Graph disconnected → K is computed on {scope_now} (size={n_now}); "
         "ΔK is not directly comparable to the connected baseline."
     )
+
+# Kemeny history update
+if len(st.session_state.k_history) == 0:
+    # force baseline point first
+    st.session_state.k_history_last_sig = None
+    # temporarily set removed_set signature to empty for baseline
+    saved = st.session_state.removed_set
+    st.session_state.removed_set = set()
+    _append_history_point(K_now=K0, scope_now=scope0)
+    st.session_state.removed_set = saved
+
+# append current state
+_append_history_point(K_now=K_now, scope_now=scope_now)
+# -------------------------
 
 # Top metrics
 col1, col2, col3, col4 = st.columns([1, 1, 2, 1])
@@ -1177,3 +1244,35 @@ else:
     )
 
 st.divider()
+
+# kemeny history plot
+st.subheader("Kemeny over deletion steps")
+
+hist = st.session_state.get("k_history", [])
+if len(hist) < 2:
+    st.caption("Remove at least one edge to see the trajectory.")
+else:
+    dfh = pd.DataFrame(hist)
+
+    # Optionally: show only points where K is computed on Full graph
+    show_full_only = st.checkbox("Show only Full graph points", value=False, key="show_full_only_kplot")
+    if show_full_only:
+        dfp = dfh[dfh["scope"] == "Full graph"].copy()
+    else:
+        dfp = dfh.copy()
+
+    st.line_chart(dfp.set_index("step")[["K"]], height=240)
+
+    # Small info row
+    st.caption(
+        f"Points: {len(dfp)}  |  Last scope: {dfh.iloc[-1]['scope']}  |  α={dfh.iloc[-1]['alpha']:.2f}"
+    )
+
+    c1, c2 = st.columns([1, 3])
+    with c1:
+        if st.button("Clear plot history", width="stretch"):
+            st.session_state.k_history = []
+            st.session_state.k_history_last_sig = None
+            st.rerun()
+    with c2:
+        st.caption("History resets automatically when the dataset or α changes.")
