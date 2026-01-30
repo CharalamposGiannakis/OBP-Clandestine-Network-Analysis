@@ -1,17 +1,12 @@
 import streamlit as st
-from ui_components import apply_tactical_theme
-# Import the logic functions we just wrote
-from src.data_manager import load_repository_data, parse_mtx
 import networkx as nx
-
+# Import the logic functions
+from src.data_manager import load_repository_data, parse_mtx
+from ui_components import apply_tactical_theme
 
 def df_to_graph(edge_df, n_nodes=None):
     """
     Builds an undirected NetworkX graph from an edge list DataFrame.
-    Expects either:
-      - columns: ['source','target'] (+ optional 'weight')
-      - or the first 2 columns are the endpoints (+ optional 'weight')
-    Assumes node IDs are already ints and consistent (0-based OR 1-based, but consistent).
     """
     # pick endpoint columns
     if "source" in edge_df.columns and "target" in edge_df.columns:
@@ -25,8 +20,6 @@ def df_to_graph(edge_df, n_nodes=None):
 
     # optionally pre-add nodes (helps if isolated nodes exist)
     if n_nodes is not None:
-        # If your nodes are 0..n-1, keep this.
-        # If your nodes are 1..n, change to range(1, n_nodes+1)
         G.add_nodes_from(range(n_nodes))
 
     if weighted:
@@ -41,7 +34,7 @@ def df_to_graph(edge_df, n_nodes=None):
     return G
 
 # --- Page Config ---
-st.set_page_config(page_title="DSS | Data Ingest", layout="wide")
+st.set_page_config(page_title="Data Importing Tool", layout="wide")
 apply_tactical_theme()
 
 # --- 1. RUN LOGIC ---
@@ -56,15 +49,16 @@ with col_title:
     st.caption("Upload, validate, and activate network datasets for system-wide analysis.")
 
 with col_status:
-    count = len(st.session_state['data_registry'])
+    count = len(st.session_state.get('data_registry', {}))
     st.markdown(f"""
-<div style="border: 1px solid var(--color-wire); padding: 15px; background-color: var(--box-bg);">
-    <p style="margin:0; font-family: 'Share Tech Mono', monospace; font-size:12px; color: var(--color-accent);">
-        SYSTEM: ONLINE
-    </p>
-    <p style="margin:0; font-family: 'Share Tech Mono', monospace; font-size:12px; color: var(--color-text);">
-        DATASETS LOADED: {count}
-    </p>
+<div style="
+    border: 1px solid #30363d; 
+    padding: 15px; 
+    border-radius: 6px; 
+    background-color: #0d1117;
+    text-align: right;">
+    <div style="font-size: 12px; color: #8b949e; margin-bottom: 4px;">SYSTEM STATUS</div>
+    <div style="font-size: 16px; font-weight: 600; color: #58a6ff;">{count} DATASETS LOADED</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -74,7 +68,7 @@ st.divider()
 col_upload, col_select = st.columns([1, 1])
 
 # ==========================================
-# LEFT: UPLOADER (Cleaned up)
+# LEFT: UPLOADER
 # ==========================================
 with col_upload:
     with st.container(border=True):
@@ -90,8 +84,10 @@ with col_upload:
 
         if uploaded_files:
             new_count = 0
+            if 'data_registry' not in st.session_state:
+                st.session_state['data_registry'] = {}
+
             for file in uploaded_files:
-                # Use logic from network_manager
                 if file.name not in st.session_state['data_registry']:
                     data_pack = parse_mtx(file, file.name, "UPLOAD")
                     
@@ -105,13 +101,13 @@ with col_upload:
                 st.rerun()
 
 # ==========================================
-# RIGHT: SELECTOR (Cleaned up)
+# RIGHT: SELECTOR
 # ==========================================
 with col_select:
     with st.container(border=True):
         st.subheader("Active Operation Data")
         
-        if not st.session_state['data_registry']:
+        if not st.session_state.get('data_registry'):
             st.warning("NO DATA AVAILABLE")
         else:
             options = list(st.session_state['data_registry'].keys())
@@ -130,19 +126,20 @@ with col_select:
                 st.session_state['network_shape'] = data_pack['shape']
                 st.session_state['data_source'] = data_pack['name']
                 n_nodes = data_pack["shape"][0]
-                st.session_state["network_graph"] = df_to_graph(data_pack["df"], n_nodes=n_nodes)
+                # Build graph object for accurate metrics
+                G_obj = df_to_graph(data_pack["df"], n_nodes=n_nodes)
+                st.session_state["network_graph"] = G_obj
 
                 st.divider()
                 
                 # Source Badge
                 src_type = data_pack.get('type', 'UNKNOWN')
-                st.markdown(f"<p style='font-family: \"Share Tech Mono\", monospace; color:#8b949e; font-size:12px;'>data origin: <span style='color:var(--color-accent);'>[{src_type}]</span></p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='font-family: \"Share Tech Mono\", monospace; color:#8b949e; font-size:12px;'>DATA ORIGIN: <span style='color:#58a6ff;'>[{src_type}]</span></p>", unsafe_allow_html=True)
                 st.success(f"DATA ACTIVE: {selected_name}")
                 
-                # Stats
                 m1, m2 = st.columns(2)
                 m1.metric("Nodes", data_pack['shape'][0])
-                m2.metric("Connections", len(data_pack['df'])/2)
+                m2.metric("Connections", G_obj.number_of_edges())
                 
                 if st.button("Purge Registry", type="primary", use_container_width=True):
                     st.session_state['data_registry'] = {}
